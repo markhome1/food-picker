@@ -202,7 +202,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { restaurantApi, amapApi } from '../../api'
+import { restaurantApi, amapApi, checkAuthGate } from '../../api'
 import { wgs84ToGcj02 } from '../../utils/geo-china'
 
 /** 与后端 PriceTierEnum 一致：0-10 / 10-20 / 20-50 / 50-100 / 100+ */
@@ -602,6 +602,7 @@ const goEat = (restaurant) => {
 }
 
 onShow(async () => {
+  if (!(await checkAuthGate())) return
   if (!locationBootstrapped.value) {
     locationBootstrapped.value = true
     if (userLat.value == null || userLng.value == null || userLat.value === '' || userLng.value === '') {

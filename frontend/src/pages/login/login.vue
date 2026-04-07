@@ -35,6 +35,25 @@
           <input class="input" v-model="regEmail" type="text" placeholder="第一人注册用" />
         </view>
         <view class="field">
+          <text class="label">邮箱验证码</text>
+          <view class="otp-row">
+            <input
+              class="input otp-input"
+              v-model="regOtp"
+              type="text"
+              maxlength="6"
+              placeholder="6 位数字"
+            />
+            <button
+              class="btn-ghost"
+              :disabled="regCooldown > 0 || loading"
+              @click="sendRegCode"
+            >
+              {{ regCooldown > 0 ? regCooldown + 's' : '获取验证码' }}
+            </button>
+          </view>
+        </view>
+        <view class="field">
           <text class="label">密码</text>
           <input class="input" v-model="regPassword" password placeholder="至少 6 位" />
         </view>
@@ -43,7 +62,8 @@
           <input class="input" v-model="regName" type="text" placeholder="怎么称呼你" />
         </view>
         <button class="btn primary" :loading="loading" @click="doRegister">创建情侣空间</button>
-        <text class="hint">创建后会得到邀请码，把邀请码发给另一半用来注册第二人。</text>
+        <text v-if="emailOtpHint" class="hint hint-warn">{{ emailOtpHint }}</text>
+        <text class="hint">请先获取邮箱验证码；创建成功后会得到邀请码发给另一半。</text>
       </template>
 
       <template v-else>
@@ -56,6 +76,25 @@
           <input class="input" v-model="joinEmail" type="text" placeholder="第二人使用不同邮箱" />
         </view>
         <view class="field">
+          <text class="label">邮箱验证码</text>
+          <view class="otp-row">
+            <input
+              class="input otp-input"
+              v-model="joinOtp"
+              type="text"
+              maxlength="6"
+              placeholder="6 位数字"
+            />
+            <button
+              class="btn-ghost"
+              :disabled="joinCooldown > 0 || loading"
+              @click="sendJoinCode"
+            >
+              {{ joinCooldown > 0 ? joinCooldown + 's' : '获取验证码' }}
+            </button>
+          </view>
+        </view>
+        <view class="field">
           <text class="label">密码</text>
           <input class="input" v-model="joinPassword" password placeholder="至少 6 位" />
         </view>
@@ -64,19 +103,28 @@
           <input class="input" v-model="joinName" type="text" placeholder="怎么称呼你" />
         </view>
         <button class="btn primary" :loading="loading" @click="doJoin">加入情侣空间</button>
-        <text class="hint">每个空间仅 2 个账号；满员后无法再加入。</text>
+        <text v-if="emailOtpHint" class="hint hint-warn">{{ emailOtpHint }}</text>
+        <text class="hint">每个空间仅 2 个账号；加入前需验证邮箱。</text>
       </template>
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { authApi, setAuthToken, checkAuthGate } from '../../api'
+import { authApi, setAuthToken, request } from '../../api'
 
 const mode = ref('login')
 const loading = ref(false)
+const emailOtpHint = ref('')
+
+const regOtp = ref('')
+const joinOtp = ref('')
+const regCooldown = ref(0)
+const joinCooldown = ref(0)
+let regTimer = null
+let joinTimer = null
 
 const tabList = [
   { key: 'login', label: '登录' },
@@ -94,13 +142,91 @@ const joinEmail = ref('')
 const joinPassword = ref('')
 const joinName = ref('')
 
+// 勿在此调用 checkAuthGate：无 token 时会 reLaunch 本页，H5 上 onShow 易在输入时重复触发导致整页重载、输入被清空。
 onShow(() => {
-  checkAuthGate().then(() => {
-    if (uni.getStorageSync('auth_token')) {
-      uni.switchTab({ url: '/pages/pick/pick' })
-    }
-  })
+  const token = uni.getStorageSync('auth_token')
+  if (!token) return
+  request({ url: '/api/auth/me', method: 'GET', silent: true })
+    .then(() => uni.switchTab({ url: '/pages/pick/pick' }))
+    .catch(() => {})
 })
+
+onMounted(async () => {
+  try {
+    const st = await authApi.status()
+    const ch = st.email_otp && st.email_otp.channel
+    if (ch === 'dev_log') {
+      emailOtpHint.value = '本地调试：验证码会打印在后端终端日志（未配置 RESEND 时）。'
+    } else if (ch === 'none') {
+      emailOtpHint.value = '服务器未配置发信（RESEND_API_KEY），无法发送验证码。'
+    } else {
+      emailOtpHint.value = ''
+    }
+  } catch {
+    emailOtpHint.value = ''
+  }
+})
+
+onUnmounted(() => {
+  if (regTimer) clearInterval(regTimer)
+  if (joinTimer) clearInterval(joinTimer)
+})
+
+function startCooldown(which) {
+  if (which === 'reg') {
+    regCooldown.value = 60
+    if (regTimer) clearInterval(regTimer)
+    regTimer = setInterval(() => {
+      regCooldown.value--
+      if (regCooldown.value <= 0 && regTimer) {
+        clearInterval(regTimer)
+        regTimer = null
+      }
+    }, 1000)
+  } else {
+    joinCooldown.value = 60
+    if (joinTimer) clearInterval(joinTimer)
+    joinTimer = setInterval(() => {
+      joinCooldown.value--
+      if (joinCooldown.value <= 0 && joinTimer) {
+        clearInterval(joinTimer)
+        joinTimer = null
+      }
+    }, 1000)
+  }
+}
+
+async function sendRegCode() {
+  const email = regEmail.value.trim()
+  if (!email) {
+    uni.showToast({ title: '请先填写邮箱', icon: 'none' })
+    return
+  }
+  loading.value = true
+  try {
+    await authApi.sendEmailCode(email, 'register_couple')
+    uni.showToast({ title: '已发送，请查收邮件', icon: 'none' })
+    startCooldown('reg')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function sendJoinCode() {
+  const email = joinEmail.value.trim()
+  if (!email) {
+    uni.showToast({ title: '请先填写邮箱', icon: 'none' })
+    return
+  }
+  loading.value = true
+  try {
+    await authApi.sendEmailCode(email, 'join_couple')
+    uni.showToast({ title: '已发送，请查收邮件', icon: 'none' })
+    startCooldown('join')
+  } finally {
+    loading.value = false
+  }
+}
 
 async function doLogin() {
   loading.value = true
@@ -121,6 +247,7 @@ async function doRegister() {
       email: regEmail.value.trim(),
       password: regPassword.value,
       display_name: regName.value.trim(),
+      verification_code: regOtp.value.trim(),
     })
     if (res.access_token) setAuthToken(res.access_token)
     uni.showModal({
@@ -142,6 +269,7 @@ async function doJoin() {
       email: joinEmail.value.trim(),
       password: joinPassword.value,
       display_name: joinName.value.trim(),
+      verification_code: joinOtp.value.trim(),
     })
     if (res.access_token) setAuthToken(res.access_token)
     uni.showToast({ title: '已加入', icon: 'success' })
@@ -242,5 +370,34 @@ async function doJoin() {
   font-size: 22rpx;
   color: #a8a29e;
   line-height: 1.5;
+}
+.hint-warn {
+  color: #b45309;
+}
+.otp-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+.otp-input {
+  flex: 1;
+  min-width: 0;
+}
+.btn-ghost {
+  flex-shrink: 0;
+  height: 88rpx;
+  line-height: 88rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #9b3f00;
+  background: #fff7ed;
+  border: 2rpx solid rgba(155, 63, 0, 0.35);
+  border-radius: 20rpx;
+}
+.btn-ghost[disabled] {
+  opacity: 0.45;
+  color: #78716c;
 }
 </style>

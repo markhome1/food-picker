@@ -32,6 +32,18 @@ export function clearAuthToken() {
   uni.removeStorageSync('auth_token')
 }
 
+/** 已在登录页时返回 true，避免 checkAuthGate 再 reLaunch 导致整页重载、输入框被清空（H5 onShow 会多次触发） */
+export function isCurrentPageLogin() {
+  try {
+    const pages = getCurrentPages()
+    const cur = pages[pages.length - 1]
+    const route = cur && cur.route ? String(cur.route) : ''
+    return route.includes('login/login')
+  } catch {
+    return false
+  }
+}
+
 export const request = (options) => {
   const silent = options.silent === true
   return new Promise((resolve, reject) => {
@@ -143,31 +155,46 @@ export const authApi = {
   me: () => request({ url: '/api/auth/me', method: 'GET' }),
   login: (email, password) =>
     request({ url: '/api/auth/login', method: 'POST', data: { email, password } }),
+  sendEmailCode: (email, purpose) =>
+    request({
+      url: '/api/auth/send-email-code',
+      method: 'POST',
+      data: { email, purpose },
+    }),
   registerCouple: (data) =>
     request({ url: '/api/auth/register-couple', method: 'POST', data }),
   joinCouple: (data) =>
     request({ url: '/api/auth/join-couple', method: 'POST', data }),
 }
 
-/** 启动时：若后端要求登录且本地无有效 token，则进登录页 */
+/**
+ * 若后端要求登录：无/无效 token 时跳转登录页（已在登录页则不再 reLaunch）。
+ * @returns {Promise<boolean>} 是否允许继续加载当前页业务数据（false 时已发起 reLaunch 或应停止请求，避免 401 刷屏）
+ */
 export async function checkAuthGate() {
   let st
   try {
     st = await request({ url: '/api/auth/status', method: 'GET', silent: true })
   } catch {
-    return
+    return true
   }
-  if (!st || !st.auth_required) return
+  if (!st || !st.auth_required) return true
   const token = uni.getStorageSync('auth_token')
   if (!token) {
-    uni.reLaunch({ url: '/pages/login/login' })
-    return
+    if (!isCurrentPageLogin()) {
+      uni.reLaunch({ url: '/pages/login/login' })
+    }
+    return false
   }
   try {
     await request({ url: '/api/auth/me', method: 'GET', silent: true })
+    return true
   } catch {
     clearAuthToken()
-    uni.reLaunch({ url: '/pages/login/login' })
+    if (!isCurrentPageLogin()) {
+      uni.reLaunch({ url: '/pages/login/login' })
+    }
+    return false
   }
 }
 

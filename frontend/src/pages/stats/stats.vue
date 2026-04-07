@@ -133,7 +133,7 @@
 import { ref, computed } from 'vue'
 import { watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { recordApi, clearAuthToken } from '../../api'
+import { recordApi, clearAuthToken, checkAuthGate } from '../../api'
 
 const stats = ref(null)
 const hasToken = ref(false)
@@ -175,7 +175,8 @@ const logout = () => {
   uni.reLaunch({ url: '/pages/login/login' })
 }
 
-onShow(() => {
+onShow(async () => {
+  if (!(await checkAuthGate())) return
   hasToken.value = !!uni.getStorageSync('auth_token')
   fetchStats()
 })

@@ -125,7 +125,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { restaurantApi } from '../../api'
+import { restaurantApi, checkAuthGate } from '../../api'
 
 const tabs = [
   { key: '', label: '全部' },
@@ -236,7 +236,10 @@ const confirmDelete = (r) => {
   })
 }
 
-onShow(() => fetchList())
+onShow(async () => {
+  if (!(await checkAuthGate())) return
+  fetchList()
+})
 </script>
 
 <style scoped>

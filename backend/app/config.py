@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # 登录 JWT；生产 Postgres 时配合 is_auth_enabled() 使用
     jwt_secret: str = ""
     jwt_exp_days: int = 30
+    # 注册/加入邮箱验证码（Resend：https://resend.com ）
+    resend_api_key: str = ""
+    resend_from: str = ""
+    email_otp_ttl_minutes: int = 15
     amap_key: str = ""
     # https://ocr.space/ocrapi 免费注册，用于截图识别店名
     ocr_space_api_key: str = ""

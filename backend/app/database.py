@@ -116,6 +116,8 @@ def _migrate_couple_columns():
 def create_db_and_tables():
     # 确保情侣空间等表类已注册（某些入口可能先于 routers 加载 database）
     from .models import couple as _couple_models  # noqa: F401
+    from .models import email_otp as _email_otp_models  # noqa: F401
+    from .models import otp_send_log as _otp_send_log_models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
     _migrate_sqlite_columns()

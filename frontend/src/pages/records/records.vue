@@ -95,7 +95,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { recordApi } from '../../api'
+import { recordApi, checkAuthGate } from '../../api'
 
 const records = ref([])
 
@@ -138,7 +138,10 @@ const goAdd = () => {
   uni.navigateTo({ url: '/pages/records/add' })
 }
 
-onShow(() => fetchRecords())
+onShow(async () => {
+  if (!(await checkAuthGate())) return
+  fetchRecords()
+})
 </script>
 
 <style scoped>
