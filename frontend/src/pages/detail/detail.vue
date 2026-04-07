@@ -352,7 +352,7 @@ const mapMarkers = computed(() => {
 const mapFallbackText = computed(() => {
   if (!restaurant.value?.address) return '暂无地址信息'
   if (!geocodeDone.value) return '正在解析位置…'
-  return '无法显示地图：H5 请在 manifest.json 的 h5.sdkConfigs.maps.amap 中填写高德 Web端(JS API)的 key 与安全密钥 securityJsCode 后重启 dev；小程序/App 使用端自带地图。地理编码仍依赖后端 Web 服务 Key。'
+  return '无法显示地图：H5 请配置高德 Web 端的 AMAP_WEB_KEY 和 AMAP_WEB_SECURITY_JS_CODE；小程序/App 使用端自带地图。地理编码仍依赖后端 Web 服务 Key。'
 })
 
 const goBack = () => {

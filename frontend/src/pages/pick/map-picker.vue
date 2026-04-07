@@ -20,6 +20,7 @@
 <script setup>
 import { ref, getCurrentInstance, onMounted } from 'vue'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
+import { getAmapCredentials, loadAmapScript } from '../../utils/amap-h5'
 
 /** 成信大航空港附近默认中心 GCJ-02 */
 const DEFAULT_CENTER = [103.9986, 30.5865]
@@ -37,32 +38,6 @@ onLoad(() => {
   uni.navigateBack()
   // #endif
 })
-
-function getAmapCredentials() {
-  // eslint-disable-next-line no-undef
-  const cfg = typeof __uniConfig !== 'undefined' ? __uniConfig : {}
-  return {
-    key: cfg.aMapKey || '',
-    securityJsCode: cfg.aMapSecurityJsCode || '',
-  }
-}
-
-function loadAmapScript(key, securityJsCode) {
-  if (typeof window === 'undefined') return Promise.reject(new Error('no window'))
-  window._AMapSecurityConfig = { securityJsCode }
-  return new Promise((resolve, reject) => {
-    if (window.AMap) {
-      resolve()
-      return
-    }
-    const s = document.createElement('script')
-    s.async = true
-    s.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&plugin=AMap.Geocoder`
-    s.onload = () => resolve()
-    s.onerror = () => reject(new Error('高德地图脚本加载失败'))
-    document.head.appendChild(s)
-  })
-}
 
 function reverseGeocode(lng, lat) {
   if (!window.AMap || !map) return
@@ -86,7 +61,7 @@ onMounted(async () => {
   const { key, securityJsCode } = getAmapCredentials()
   if (!key || !securityJsCode) {
     uni.showToast({
-      title: '请在 manifest.json → h5.sdkConfigs.maps.amap 填写 Key 与安全密钥',
+      title: '请配置 AMAP_WEB_KEY 与 AMAP_WEB_SECURITY_JS_CODE',
       icon: 'none',
       duration: 4000,
     })

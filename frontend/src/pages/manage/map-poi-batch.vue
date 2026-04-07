@@ -245,7 +245,7 @@ async function initBaseMap() {
   if (!key || !securityJsCode) {
     mapLoading.value = false
     uni.showToast({
-      title: '请在 manifest 配置高德 JS Key 与安全密钥',
+      title: '请配置 AMAP_WEB_KEY 与 AMAP_WEB_SECURITY_JS_CODE',
       icon: 'none',
       duration: 3500,
     })

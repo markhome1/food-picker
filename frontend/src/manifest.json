@@ -81,8 +81,8 @@
         "sdkConfigs": {
             "maps": {
                 "amap": {
-                    "key": "1d87ba4d13439a9f9f73be86176a2d1e",
-                    "securityJsCode": "7c1ceb26329c3a2fa375ec4c753e226c",
+                    "key": "",
+                    "securityJsCode": "",
                     "serviceHost": ""
                 }
             }

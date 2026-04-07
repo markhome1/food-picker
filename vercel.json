@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && corepack pnpm install --frozen-lockfile && corepack pnpm run build:h5",
+  "buildCommand": "cd frontend && export VITE_AMAP_WEB_KEY=\"$AMAP_WEB_KEY\" VITE_AMAP_WEB_SECURITY_JS_CODE=\"$AMAP_WEB_SECURITY_JS_CODE\" && corepack pnpm install --frozen-lockfile && corepack pnpm run build:h5",
   "outputDirectory": "frontend/dist/build/h5",
   "functions": {
     "api/index.py": {
