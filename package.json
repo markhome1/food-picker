@@ -1,0 +1,11 @@
+{
+  "name": "food-picker",
+  "private": true,
+  "packageManager": "pnpm@10.6.5",
+  "scripts": {
+    "build": "corepack pnpm --dir frontend install --frozen-lockfile && corepack pnpm --dir frontend run build:h5"
+  },
+  "devDependencies": {
+    "vite": "5.2.8"
+  }
+}

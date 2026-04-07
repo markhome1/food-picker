@@ -1,0 +1,110 @@
+{
+	"pages": [
+		{
+			"path": "pages/pick/pick",
+			"style": {
+				"navigationBarTitleText": "今天吃啥"
+			}
+		},
+		{
+			"path": "pages/pick/map-picker",
+			"style": {
+				"navigationBarTitleText": "地图选点"
+			}
+		},
+		{
+			"path": "pages/manage/manage",
+			"style": {
+				"navigationBarTitleText": "发现美食"
+			}
+		},
+		{
+			"path": "pages/records/records",
+			"style": {
+				"navigationBarTitleText": "美食足迹"
+			}
+		},
+		{
+			"path": "pages/stats/stats",
+			"style": {
+				"navigationBarTitleText": "美食报表"
+			}
+		},
+		{
+			"path": "pages/detail/detail",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom",
+				"navigationBarBackgroundColor": "#2e2f2f"
+			}
+		},
+		{
+			"path": "pages/manage/edit",
+			"style": {
+				"navigationBarTitleText": "编辑餐厅"
+			}
+		},
+		{
+			"path": "pages/manage/map-poi-batch",
+			"style": {
+				"navigationBarTitleText": "批量加店"
+			}
+		},
+		{
+			"path": "pages/manage/douyin-import",
+			"style": {
+				"navigationBarTitleText": "抖音链接导入"
+			}
+		},
+		{
+			"path": "pages/manage/screenshot-import",
+			"style": {
+				"navigationBarTitleText": "截图识别加店"
+			}
+		},
+		{
+			"path": "pages/records/add",
+			"style": {
+				"navigationBarTitleText": "记录美食"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "white",
+		"navigationBarTitleText": "今天吃啥",
+		"navigationBarBackgroundColor": "#2e2f2f",
+		"backgroundColor": "#f8f8f7"
+	},
+	"tabBar": {
+		"color": "#767776",
+		"selectedColor": "#9b3f00",
+		"borderStyle": "black",
+		"backgroundColor": "#ffffff",
+		"list": [
+			{
+				"pagePath": "pages/pick/pick",
+				"text": "吃啥",
+				"iconPath": "static/tabbar/pick.png",
+				"selectedIconPath": "static/tabbar/pick_active.png"
+			},
+			{
+				"pagePath": "pages/manage/manage",
+				"text": "发现",
+				"iconPath": "static/tabbar/manage.png",
+				"selectedIconPath": "static/tabbar/manage_active.png"
+			},
+			{
+				"pagePath": "pages/records/records",
+				"text": "足迹",
+				"iconPath": "static/tabbar/record.png",
+				"selectedIconPath": "static/tabbar/record_active.png"
+			},
+			{
+				"pagePath": "pages/stats/stats",
+				"text": "报表",
+				"iconPath": "static/tabbar/stats.png",
+				"selectedIconPath": "static/tabbar/stats_active.png"
+			}
+		]
+	}
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd frontend && corepack pnpm install --frozen-lockfile && corepack pnpm run build:h5",
+  "outputDirectory": "frontend/dist/build/h5",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{frontend/**,docs/**,.github/**,.playwright-mcp/**,**/__pycache__/**}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
