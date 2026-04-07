@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import extract
 from sqlmodel import Session, select, func, col
 
+from ..auth_context import AuthCtxDep, AuthContext
 from ..database import engine, get_session
 from ..models.record import DiningRecord, DiningRecordCreate, DiningRecordPublic
 from ..models.restaurant import Restaurant
@@ -14,14 +15,24 @@ router = APIRouter(prefix="/api/records", tags=["dining_records"])
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
+def _filter_records_stmt(stmt, ctx: AuthContext):
+    if ctx.auth_required and ctx.couple_account_id is not None:
+        return stmt.where(DiningRecord.couple_account_id == ctx.couple_account_id)
+    return stmt
+
+
 @router.post("", response_model=DiningRecordPublic)
-def create_record(record: DiningRecordCreate, session: SessionDep):
+def create_record(record: DiningRecordCreate, session: SessionDep, ctx: AuthCtxDep):
     # 验证餐厅存在
     restaurant = session.get(Restaurant, record.restaurant_id)
     if not restaurant:
         raise HTTPException(status_code=404, detail="餐厅不存在")
+    if ctx.auth_required and restaurant.couple_account_id != ctx.couple_account_id:
+        raise HTTPException(status_code=404, detail="餐厅不存在")
 
     db_obj = DiningRecord.model_validate(record)
+    if ctx.auth_required:
+        db_obj.couple_account_id = ctx.couple_account_id
     session.add(db_obj)
     session.commit()
     session.refresh(db_obj)
@@ -31,6 +42,7 @@ def create_record(record: DiningRecordCreate, session: SessionDep):
 @router.get("", response_model=List[DiningRecordPublic])
 def list_records(
     session: SessionDep,
+    ctx: AuthCtxDep,
     restaurant_id: Optional[int] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
@@ -38,6 +50,7 @@ def list_records(
     limit: Annotated[int, Query(le=200)] = 50,
 ):
     stmt = select(DiningRecord).order_by(col(DiningRecord.dining_date).desc())
+    stmt = _filter_records_stmt(stmt, ctx)
 
     if restaurant_id:
         stmt = stmt.where(DiningRecord.restaurant_id == restaurant_id)
@@ -60,6 +73,7 @@ def list_records(
 @router.get("/stats")
 def get_stats(
     session: SessionDep,
+    ctx: AuthCtxDep,
     period: str = Query(default="all", pattern="^(all|month)$"),
 ):
     """统计看板数据"""
@@ -68,13 +82,17 @@ def get_stats(
         now = datetime.now()
         start_date = date(now.year, now.month, 1)
 
-    return _build_stats(session, start_date=start_date)
+    return _build_stats(session, start_date=start_date, ctx=ctx)
 
 
-def _build_stats(session: Session, start_date: Optional[date] = None):
+def _build_stats(
+    session: Session, start_date: Optional[date] = None, ctx: Optional[AuthContext] = None
+):
     filters = []
     if start_date is not None:
         filters.append(DiningRecord.dining_date >= start_date)
+    if ctx and ctx.auth_required and ctx.couple_account_id is not None:
+        filters.append(DiningRecord.couple_account_id == ctx.couple_account_id)
 
     total_count_stmt = select(func.count(DiningRecord.id))
     total_cost_stmt = select(func.sum(DiningRecord.actual_cost))
@@ -155,9 +173,11 @@ def _build_stats(session: Session, start_date: Optional[date] = None):
 
 
 @router.delete("/{record_id}")
-def delete_record(record_id: int, session: SessionDep):
+def delete_record(record_id: int, session: SessionDep, ctx: AuthCtxDep):
     rec = session.get(DiningRecord, record_id)
     if not rec:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    if ctx.auth_required and rec.couple_account_id != ctx.couple_account_id:
         raise HTTPException(status_code=404, detail="记录不存在")
     session.delete(rec)
     session.commit()

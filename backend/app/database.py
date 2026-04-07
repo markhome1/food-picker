@@ -82,9 +82,44 @@ def _migrate_sqlite_columns():
                 conn.execute(text(f"ALTER TABLE restaurant ADD COLUMN {col_name} {col_type}"))
 
 
+def _migrate_couple_columns():
+    """为旧库补 couple_account_id（SQLite / Postgres）。"""
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    with engine.begin() as conn:
+        if "restaurant" in tables:
+            cols = {c["name"] for c in insp.get_columns("restaurant")}
+            if "couple_account_id" not in cols:
+                if engine.dialect.name == "sqlite":
+                    conn.execute(text("ALTER TABLE restaurant ADD COLUMN couple_account_id INTEGER"))
+                else:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE restaurant ADD COLUMN IF NOT EXISTS "
+                            "couple_account_id INTEGER REFERENCES coupleaccount(id)"
+                        )
+                    )
+        if "diningrecord" in tables:
+            cols2 = {c["name"] for c in insp.get_columns("diningrecord")}
+            if "couple_account_id" not in cols2:
+                if engine.dialect.name == "sqlite":
+                    conn.execute(text("ALTER TABLE diningrecord ADD COLUMN couple_account_id INTEGER"))
+                else:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE diningrecord ADD COLUMN IF NOT EXISTS "
+                            "couple_account_id INTEGER REFERENCES coupleaccount(id)"
+                        )
+                    )
+
+
 def create_db_and_tables():
+    # 确保情侣空间等表类已注册（某些入口可能先于 routers 加载 database）
+    from .models import couple as _couple_models  # noqa: F401
+
     SQLModel.metadata.create_all(engine)
     _migrate_sqlite_columns()
+    _migrate_couple_columns()
 
 
 def get_session():

@@ -1,7 +1,9 @@
 <script>
+import { checkAuthGate } from './api/index.js'
+
 export default {
   onLaunch: function () {
-    console.log('App Launch')
+    checkAuthGate()
   },
   onShow: function () {
     console.log('App Show')

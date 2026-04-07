@@ -18,6 +18,20 @@ function resolveApiBase() {
 
 export const BASE_URL = resolveApiBase()
 
+export function getAuthHeaders() {
+  const token = uni.getStorageSync('auth_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export function setAuthToken(token) {
+  if (token) uni.setStorageSync('auth_token', token)
+  else uni.removeStorageSync('auth_token')
+}
+
+export function clearAuthToken() {
+  uni.removeStorageSync('auth_token')
+}
+
 export const request = (options) => {
   const silent = options.silent === true
   return new Promise((resolve, reject) => {
@@ -27,6 +41,7 @@ export const request = (options) => {
       data: options.data,
       header: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders(),
         ...options.header
       },
       success: (res) => {
@@ -94,6 +109,9 @@ export function importOcrUpload(filePath) {
       url: `${BASE_URL}/api/import/ocr-candidates`,
       filePath,
       name: 'file',
+      header: {
+        ...getAuthHeaders(),
+      },
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
@@ -117,6 +135,40 @@ export function importOcrUpload(filePath) {
       },
     })
   })
+}
+
+// 登录 / 情侣空间
+export const authApi = {
+  status: () => request({ url: '/api/auth/status', method: 'GET', silent: true }),
+  me: () => request({ url: '/api/auth/me', method: 'GET' }),
+  login: (email, password) =>
+    request({ url: '/api/auth/login', method: 'POST', data: { email, password } }),
+  registerCouple: (data) =>
+    request({ url: '/api/auth/register-couple', method: 'POST', data }),
+  joinCouple: (data) =>
+    request({ url: '/api/auth/join-couple', method: 'POST', data }),
+}
+
+/** 启动时：若后端要求登录且本地无有效 token，则进登录页 */
+export async function checkAuthGate() {
+  let st
+  try {
+    st = await request({ url: '/api/auth/status', method: 'GET', silent: true })
+  } catch {
+    return
+  }
+  if (!st || !st.auth_required) return
+  const token = uni.getStorageSync('auth_token')
+  if (!token) {
+    uni.reLaunch({ url: '/pages/login/login' })
+    return
+  }
+  try {
+    await request({ url: '/api/auth/me', method: 'GET', silent: true })
+  } catch {
+    clearAuthToken()
+    uni.reLaunch({ url: '/pages/login/login' })
+  }
 }
 
 // 高德 API（地理编码用 query，避免部分端 GET + data 对中文参数处理异常）

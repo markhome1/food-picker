@@ -1,6 +1,8 @@
 .DS_Store
 .idea/
 .vscode/
+.cursor/
+.codex/
 *.log
 *.tmp
 
@@ -25,3 +27,5 @@ backend/.env.local
 
 data/*.db
 backend/data/*.db
+# 本地 / 测试用临时 SQLite
+backend/tmp*.db

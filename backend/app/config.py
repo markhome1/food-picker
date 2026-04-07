@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     app_name: str = "今天吃啥"
     database_url: str = _default_database_url()
     sqlite_seed_path: str = str(DEFAULT_SQLITE_FILE)
+    # 登录 JWT；生产 Postgres 时配合 is_auth_enabled() 使用
+    jwt_secret: str = ""
+    jwt_exp_days: int = 30
     amap_key: str = ""
     # https://ocr.space/ocrapi 免费注册，用于截图识别店名
     ocr_space_api_key: str = ""
@@ -42,3 +45,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def is_auth_enabled() -> bool:
+    """是否要求登录并按情侣空间隔离数据。AUTH_ENABLED 显式优先，否则非 SQLite 默认开启。"""
+    v = os.getenv("AUTH_ENABLED")
+    if v is not None:
+        return v.strip().lower() in ("1", "true", "yes")
+    return not settings.database_url.startswith("sqlite")

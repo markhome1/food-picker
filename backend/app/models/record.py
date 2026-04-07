@@ -19,6 +19,11 @@ class DiningRecordBase(SQLModel):
 
 class DiningRecord(DiningRecordBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    couple_account_id: Optional[int] = Field(
+        default=None,
+        foreign_key="coupleaccount.id",
+        index=True,
+    )
     created_at: datetime = Field(default_factory=datetime.now)
 
     restaurant: Optional["Restaurant"] = Relationship(back_populates="records")

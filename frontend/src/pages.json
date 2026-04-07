@@ -67,6 +67,12 @@
 			"style": {
 				"navigationBarTitleText": "记录美食"
 			}
+		},
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationBarTitleText": "登录"
+			}
 		}
 	],
 	"globalStyle": {

@@ -122,6 +122,10 @@
       <view class="loading-spinner"></view>
       <text class="loading-text">加载中...</text>
     </view>
+
+    <view v-if="hasToken" class="logout-row">
+      <text class="logout-link" @click="logout">退出登录</text>
+    </view>
   </view>
 </template>
 
@@ -129,9 +133,10 @@
 import { ref, computed } from 'vue'
 import { watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { recordApi } from '../../api'
+import { recordApi, clearAuthToken } from '../../api'
 
 const stats = ref(null)
+const hasToken = ref(false)
 const maxCount = ref(1)
 const maxVisits = ref(1)
 const period = ref('all')
@@ -165,7 +170,15 @@ const rankBarWidth = (visits) => {
   return Math.max(10, (visits / maxVisits.value) * 100) + '%'
 }
 
-onShow(() => fetchStats())
+const logout = () => {
+  clearAuthToken()
+  uni.reLaunch({ url: '/pages/login/login' })
+}
+
+onShow(() => {
+  hasToken.value = !!uni.getStorageSync('auth_token')
+  fetchStats()
+})
 watch(period, () => fetchStats())
 </script>
 
@@ -174,6 +187,19 @@ watch(period, () => fetchStats())
   padding: 40rpx 32rpx 120rpx;
   min-height: 100vh;
   background: #f7f6f5;
+}
+
+.logout-row {
+  margin-top: 48rpx;
+  padding-bottom: 48rpx;
+  align-items: center;
+  justify-content: center;
+  display: flex;
+}
+.logout-link {
+  font-size: 26rpx;
+  color: #a8a29e;
+  text-decoration: underline;
 }
 
 /* ---- Header ---- */

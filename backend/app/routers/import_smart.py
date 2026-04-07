@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
+from ..auth_context import AuthCtxDep
 from ..config import settings
 from ..database import get_session
 from ..models.restaurant import (
@@ -26,7 +27,7 @@ from ..models.restaurant import (
     PriceTierEnum,
     SourceEnum,
 )
-from ..routers.restaurants import _price_to_tier, _boards_join, _boards_tokens
+from ..routers.restaurants import _price_to_tier, _boards_join, _boards_tokens, _stmt_restaurants_for_ctx
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -139,7 +140,7 @@ async def _amap_first_poi(keyword: str) -> Optional[dict]:
 
 
 @router.post("/douyin")
-async def import_from_douyin(body: DouyinUrlIn, session: SessionDep):
+async def import_from_douyin(body: DouyinUrlIn, session: SessionDep, ctx: AuthCtxDep):
     u = body.url.strip()
     if "douyin.com" not in u and "iesdouyin.com" not in u:
         raise HTTPException(status_code=400, detail="请粘贴抖音链接（含 douyin.com）")
@@ -194,6 +195,7 @@ async def import_from_douyin(body: DouyinUrlIn, session: SessionDep):
             boards=_boards_join({"my_pick"}),
             created_at=now,
             updated_at=now,
+            couple_account_id=ctx.couple_account_id if ctx.auth_required else None,
         )
     elif geo:
         r = Restaurant(
@@ -212,6 +214,7 @@ async def import_from_douyin(body: DouyinUrlIn, session: SessionDep):
             boards=_boards_join({"my_pick"}),
             created_at=now,
             updated_at=now,
+            couple_account_id=ctx.couple_account_id if ctx.auth_required else None,
         )
     else:
         raise HTTPException(
@@ -219,7 +222,8 @@ async def import_from_douyin(body: DouyinUrlIn, session: SessionDep):
             detail=f"已解析标题「{guess}」，但高德未找到坐标。请用地图批量加或截图识别后选店名。",
         )
 
-    dup = session.exec(select(Restaurant).where(Restaurant.name == r.name)).first()
+    dup_stmt = _stmt_restaurants_for_ctx(select(Restaurant).where(Restaurant.name == r.name), ctx)
+    dup = session.exec(dup_stmt).first()
     if dup:
         bset = _boards_tokens(dup.boards)
         bset.add("my_pick")
@@ -305,7 +309,7 @@ async def ocr_shop_candidates(file: UploadFile = File(...)):
 
 
 @router.post("/add-by-name")
-async def add_restaurant_by_name(body: AddByNameIn, session: SessionDep):
+async def add_restaurant_by_name(body: AddByNameIn, session: SessionDep, ctx: AuthCtxDep):
     """根据店名高德检索 POI，加入自己精选（用于 OCR 选中后）。"""
     name = body.name.strip()
     if not name:
@@ -335,6 +339,7 @@ async def add_restaurant_by_name(body: AddByNameIn, session: SessionDep):
             boards=_boards_join(_boards_tokens(body.boards) or {"my_pick"}),
             created_at=now,
             updated_at=now,
+            couple_account_id=ctx.couple_account_id if ctx.auth_required else None,
         )
     elif geo:
         r = Restaurant(
@@ -353,11 +358,13 @@ async def add_restaurant_by_name(body: AddByNameIn, session: SessionDep):
             boards=_boards_join(_boards_tokens(body.boards) or {"my_pick"}),
             created_at=now,
             updated_at=now,
+            couple_account_id=ctx.couple_account_id if ctx.auth_required else None,
         )
     else:
         raise HTTPException(status_code=422, detail="高德未找到该店，请换关键词或用手动新增")
 
-    dup = session.exec(select(Restaurant).where(Restaurant.name == r.name)).first()
+    dup_stmt = _stmt_restaurants_for_ctx(select(Restaurant).where(Restaurant.name == r.name), ctx)
+    dup = session.exec(dup_stmt).first()
     if dup:
         bset = _boards_tokens(dup.boards)
         bset.update(_boards_tokens(body.boards) or {"my_pick"})

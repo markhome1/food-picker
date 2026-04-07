@@ -8,6 +8,7 @@ from sqlmodel import Session, select, func, col
 import csv
 import io
 
+from ..auth_context import AuthCtxDep, AuthContext
 from ..database import get_session
 from ..models.restaurant import (
     Restaurant,
@@ -24,6 +25,19 @@ from ..config import settings
 router = APIRouter(prefix="/api/restaurants", tags=["restaurants"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+def _stmt_restaurants_for_ctx(stmt, ctx: AuthContext):
+    if ctx.auth_required and ctx.couple_account_id is not None:
+        return stmt.where(Restaurant.couple_account_id == ctx.couple_account_id)
+    return stmt
+
+
+def _assert_restaurant_couple(r: Restaurant, ctx: AuthContext) -> None:
+    if not ctx.auth_required:
+        return
+    if r.couple_account_id != ctx.couple_account_id:
+        raise HTTPException(status_code=404, detail="餐厅不存在")
 
 
 def _boards_tokens(s: Optional[str]) -> Set[str]:
@@ -56,17 +70,20 @@ class RestaurantBatchIn(BaseModel):
 
 
 @router.post("", response_model=RestaurantPublic)
-def create_restaurant(restaurant: RestaurantCreate, session: SessionDep):
+def create_restaurant(restaurant: RestaurantCreate, session: SessionDep, ctx: AuthCtxDep):
     db_obj = Restaurant.model_validate(restaurant)
+    if ctx.auth_required:
+        db_obj.couple_account_id = ctx.couple_account_id
     session.add(db_obj)
     session.commit()
     session.refresh(db_obj)
-    return _to_public(db_obj, session)
+    return _to_public(db_obj, session, ctx=ctx)
 
 
 @router.get("", response_model=List[RestaurantPublic])
 def list_restaurants(
     session: SessionDep,
+    ctx: AuthCtxDep,
     price_tier: Optional[PriceTierEnum] = None,
     category: Optional[str] = None,
     keyword: Optional[str] = None,
@@ -81,7 +98,7 @@ def list_restaurants(
     offset: int = 0,
     limit: Annotated[int, Query(le=200)] = 50,
 ):
-    stmt = select(Restaurant)
+    stmt = _stmt_restaurants_for_ctx(select(Restaurant), ctx)
 
     if price_tier:
         stmt = stmt.where(Restaurant.price_tier == price_tier)
@@ -94,7 +111,9 @@ def list_restaurants(
         )
 
     results = session.exec(stmt).all()
-    visit_counts = _load_visit_counts(session, [r.id for r in results if r.id is not None])
+    visit_counts = _load_visit_counts(
+        session, [r.id for r in results if r.id is not None], ctx
+    )
 
     if board == "high_score":
         results = [r for r in results if (r.rating or 0) >= 4.5]
@@ -110,6 +129,7 @@ def list_restaurants(
             user_lat,
             user_lng,
             visit_count=visit_counts.get(r.id, 0),
+            ctx=ctx,
         )
         if (
             max_distance_km is not None
@@ -138,6 +158,7 @@ def list_restaurants(
 @router.get("/random", response_model=RestaurantPublic)
 def random_restaurant(
     session: SessionDep,
+    ctx: AuthCtxDep,
     price_tier: Optional[PriceTierEnum] = None,
     category: Optional[str] = None,
     user_lat: Optional[float] = None,
@@ -145,7 +166,7 @@ def random_restaurant(
     max_distance_km: Optional[float] = None,
 ):
     """随机推荐一家餐厅"""
-    stmt = select(Restaurant)
+    stmt = _stmt_restaurants_for_ctx(select(Restaurant), ctx)
     if price_tier:
         stmt = stmt.where(Restaurant.price_tier == price_tier)
     if category:
@@ -165,48 +186,52 @@ def random_restaurant(
         raise HTTPException(status_code=404, detail="没有符合条件的餐厅")
 
     chosen = random.choice(results)
-    return _to_public(chosen, session, user_lat, user_lng)
+    return _to_public(chosen, session, user_lat, user_lng, ctx=ctx)
 
 
 @router.get("/{restaurant_id}", response_model=RestaurantPublic)
-def get_restaurant(restaurant_id: int, session: SessionDep):
+def get_restaurant(restaurant_id: int, session: SessionDep, ctx: AuthCtxDep):
     r = session.get(Restaurant, restaurant_id)
     if not r:
         raise HTTPException(status_code=404, detail="餐厅不存在")
-    return _to_public(r, session)
+    _assert_restaurant_couple(r, ctx)
+    return _to_public(r, session, ctx=ctx)
 
 
 @router.patch("/{restaurant_id}", response_model=RestaurantPublic)
-def update_restaurant(restaurant_id: int, data: RestaurantUpdate, session: SessionDep):
+def update_restaurant(restaurant_id: int, data: RestaurantUpdate, session: SessionDep, ctx: AuthCtxDep):
     r = session.get(Restaurant, restaurant_id)
     if not r:
         raise HTTPException(status_code=404, detail="餐厅不存在")
+    _assert_restaurant_couple(r, ctx)
     update_data = data.model_dump(exclude_unset=True)
     r.sqlmodel_update(update_data)
     session.add(r)
     session.commit()
     session.refresh(r)
-    return _to_public(r, session)
+    return _to_public(r, session, ctx=ctx)
 
 
 @router.delete("/{restaurant_id}")
-def delete_restaurant(restaurant_id: int, session: SessionDep):
+def delete_restaurant(restaurant_id: int, session: SessionDep, ctx: AuthCtxDep):
     r = session.get(Restaurant, restaurant_id)
     if not r:
         raise HTTPException(status_code=404, detail="餐厅不存在")
+    _assert_restaurant_couple(r, ctx)
     session.delete(r)
     session.commit()
     return {"code": 200, "message": "已删除"}
 
 
 @router.post("/batch")
-def batch_create_restaurants(body: RestaurantBatchIn, session: SessionDep):
+def batch_create_restaurants(body: RestaurantBatchIn, session: SessionDep, ctx: AuthCtxDep):
     """批量新增（地图 POI 多选等）。同名已存在则跳过。"""
     if len(body.items) > 40:
         raise HTTPException(status_code=400, detail="单次最多添加 40 家")
     if not body.items:
         return {"code": 200, "created": 0, "skipped": 0, "message": "无数据"}
-    existing_names = {r.name.strip() for r in session.exec(select(Restaurant)).all()}
+    name_q = _stmt_restaurants_for_ctx(select(Restaurant), ctx)
+    existing_names = {r.name.strip() for r in session.exec(name_q).all()}
     now = datetime.now()
     created = 0
     skipped = 0
@@ -236,6 +261,7 @@ def batch_create_restaurants(body: RestaurantBatchIn, session: SessionDep):
             boards=_boards_join(bset),
             created_at=now,
             updated_at=now,
+            couple_account_id=ctx.couple_account_id if ctx.auth_required else None,
         )
         session.add(r)
         existing_names.add(nm)
@@ -245,7 +271,7 @@ def batch_create_restaurants(body: RestaurantBatchIn, session: SessionDep):
 
 
 @router.post("/import")
-async def import_csv(session: SessionDep, file: UploadFile = File(...)):
+async def import_csv(session: SessionDep, ctx: AuthCtxDep, file: UploadFile = File(...)):
     """CSV 批量导入餐厅。CSV 列: name,address,avg_price,category,tags,source"""
     content = await file.read()
     text = content.decode("utf-8-sig")
@@ -263,6 +289,7 @@ async def import_csv(session: SessionDep, file: UploadFile = File(...)):
             tags=row.get("tags", ""),
             source=row.get("source", "manual"),
             boards=(row.get("boards") or "").strip(),
+            couple_account_id=ctx.couple_account_id if ctx.auth_required else None,
         )
         session.add(r)
         count += 1
@@ -285,14 +312,18 @@ def _price_to_tier(price: float) -> PriceTierEnum:
         return PriceTierEnum.tier_100_plus
 
 
-def _load_visit_counts(session: Session, restaurant_ids: List[int]) -> dict[int, int]:
+def _load_visit_counts(
+    session: Session, restaurant_ids: List[int], ctx: AuthContext
+) -> dict[int, int]:
     if not restaurant_ids:
         return {}
     stmt = (
         select(DiningRecord.restaurant_id, func.count(DiningRecord.id))
         .where(DiningRecord.restaurant_id.in_(restaurant_ids))
-        .group_by(DiningRecord.restaurant_id)
     )
+    if ctx.auth_required and ctx.couple_account_id is not None:
+        stmt = stmt.where(DiningRecord.couple_account_id == ctx.couple_account_id)
+    stmt = stmt.group_by(DiningRecord.restaurant_id)
     return {restaurant_id: count for restaurant_id, count in session.exec(stmt).all()}
 
 
@@ -302,11 +333,13 @@ def _to_public(
     user_lat: Optional[float] = None,
     user_lng: Optional[float] = None,
     visit_count: Optional[int] = None,
+    ctx: Optional[AuthContext] = None,
 ) -> RestaurantPublic:
     if visit_count is None:
-        visit_count = session.exec(
-            select(func.count(DiningRecord.id)).where(DiningRecord.restaurant_id == r.id)
-        ).one()
+        vc_stmt = select(func.count(DiningRecord.id)).where(DiningRecord.restaurant_id == r.id)
+        if ctx and ctx.auth_required and ctx.couple_account_id is not None:
+            vc_stmt = vc_stmt.where(DiningRecord.couple_account_id == ctx.couple_account_id)
+        visit_count = session.exec(vc_stmt).one()
 
     distance = None
     if user_lat and user_lng and r.latitude and r.longitude:

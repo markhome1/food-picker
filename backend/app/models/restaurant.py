@@ -51,6 +51,11 @@ class RestaurantBase(SQLModel):
 
 class Restaurant(RestaurantBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    couple_account_id: Optional[int] = Field(
+        default=None,
+        foreign_key="coupleaccount.id",
+        index=True,
+    )
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
