@@ -1,7 +1,10 @@
 <template>
   <view class="page">
     <view class="hero-section">
-      <text class="hero-title">今天吃啥</text>
+      <view class="hero-brand">
+        <image class="hero-logo" src="/static/logo.svg" mode="aspectFit" />
+        <text class="hero-title">food-picker</text>
+      </view>
       <text class="hero-subtitle">附近有什么好店 · 随手挑几家进精选 · 再抽签</text>
     </view>
 
@@ -639,6 +642,17 @@ watch([selectedTier, selectedDistance, category], async (_n, oldVals) => {
 
 /* ---- Hero Section ---- */
 .hero-section { margin-bottom: 40rpx; }
+.hero-brand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20rpx;
+}
+.hero-logo {
+  width: 100rpx;
+  height: 100rpx;
+  flex-shrink: 0;
+}
 .hero-title {
   display: block; font-size: 84rpx; font-weight: 900; color: #9b3f00;
   letter-spacing: -2rpx; line-height: 1.05;

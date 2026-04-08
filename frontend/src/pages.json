@@ -3,7 +3,7 @@
 		{
 			"path": "pages/pick/pick",
 			"style": {
-				"navigationBarTitleText": "今天吃啥"
+				"navigationBarTitleText": "food-picker"
 			}
 		},
 		{
@@ -77,7 +77,7 @@
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "white",
-		"navigationBarTitleText": "今天吃啥",
+		"navigationBarTitleText": "food-picker",
 		"navigationBarBackgroundColor": "#2e2f2f",
 		"backgroundColor": "#f8f8f7"
 	},

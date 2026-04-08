@@ -1,7 +1,10 @@
 <template>
   <view class="page">
     <view class="hero">
-      <text class="hero-title">今天吃啥</text>
+      <view class="hero-brand">
+        <image class="hero-logo" src="/static/logo.svg" mode="aspectFit" />
+        <text class="hero-title">food-picker</text>
+      </view>
       <text class="hero-sub">情侣专属 · 最多两人共享同一空间</text>
     </view>
 
@@ -288,6 +291,17 @@ async function doJoin() {
 }
 .hero {
   margin-bottom: 40rpx;
+}
+.hero-brand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+.hero-logo {
+  width: 80rpx;
+  height: 80rpx;
+  flex-shrink: 0;
 }
 .hero-title {
   display: block;
