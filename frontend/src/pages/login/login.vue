@@ -23,7 +23,21 @@
       <template v-if="mode === 'login'">
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="loginEmail" type="text" placeholder="you@example.com" />
+          <input class="input" v-model="loginEmail" type="text" placeholder="先输入账号，再点下面后缀" />
+          <text class="email-domain-hint">常用后缀（点选补全 @ 后域名）</text>
+          <scroll-view class="email-domains-scroll" scroll-x :show-scrollbar="false" enable-flex>
+            <view class="email-domains-row">
+              <view
+                v-for="item in commonEmailDomains"
+                :key="'l-' + item.domain"
+                class="email-domain-chip"
+                @click="applyEmailDomain('login', item.domain)"
+              >
+                <text class="email-domain-name">{{ item.label }}</text>
+                <text class="email-domain-at">@{{ item.domain }}</text>
+              </view>
+            </view>
+          </scroll-view>
         </view>
         <view class="field">
           <text class="label">密码</text>
@@ -65,7 +79,21 @@
         </view>
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="regEmail" type="text" placeholder="创建者邮箱" />
+          <input class="input" v-model="regEmail" type="text" placeholder="先输入账号，再点下面后缀" />
+          <text class="email-domain-hint">常用后缀（点选补全 @ 后域名）</text>
+          <scroll-view class="email-domains-scroll" scroll-x :show-scrollbar="false" enable-flex>
+            <view class="email-domains-row">
+              <view
+                v-for="item in commonEmailDomains"
+                :key="'r-' + item.domain"
+                class="email-domain-chip"
+                @click="applyEmailDomain('reg', item.domain)"
+              >
+                <text class="email-domain-name">{{ item.label }}</text>
+                <text class="email-domain-at">@{{ item.domain }}</text>
+              </view>
+            </view>
+          </scroll-view>
         </view>
         <view class="field">
           <text class="label">邮箱验证码</text>
@@ -106,7 +134,21 @@
         </view>
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="joinEmail" type="text" placeholder="使用未注册过的邮箱" />
+          <input class="input" v-model="joinEmail" type="text" placeholder="先输入账号，再点下面后缀" />
+          <text class="email-domain-hint">常用后缀（点选补全 @ 后域名）</text>
+          <scroll-view class="email-domains-scroll" scroll-x :show-scrollbar="false" enable-flex>
+            <view class="email-domains-row">
+              <view
+                v-for="item in commonEmailDomains"
+                :key="'j-' + item.domain"
+                class="email-domain-chip"
+                @click="applyEmailDomain('join', item.domain)"
+              >
+                <text class="email-domain-name">{{ item.label }}</text>
+                <text class="email-domain-at">@{{ item.domain }}</text>
+              </view>
+            </view>
+          </scroll-view>
         </view>
         <view class="field">
           <text class="label">邮箱验证码</text>
@@ -164,6 +206,46 @@ const tabList = [
   { key: 'register', label: '创建空间' },
   { key: 'join', label: '加入空间' },
 ]
+
+/** 点选后拼到 @ 后面（或替换已有域名） */
+const commonEmailDomains = [
+  { domain: 'qq.com', label: 'QQ' },
+  { domain: 'gmail.com', label: 'Gmail' },
+  { domain: '163.com', label: '163' },
+  { domain: '126.com', label: '126' },
+  { domain: 'foxmail.com', label: 'Foxmail' },
+  { domain: 'outlook.com', label: 'Outlook' },
+  { domain: 'hotmail.com', label: 'Hotmail' },
+  { domain: 'icloud.com', label: 'iCloud' },
+  { domain: 'sina.com', label: '新浪' },
+  { domain: 'yeah.net', label: 'Yeah' },
+]
+
+function applyEmailDomain(which, domain) {
+  const d = String(domain || '')
+    .trim()
+    .replace(/^@/, '')
+  if (!d) return
+  const map = { login: loginEmail, reg: regEmail, join: joinEmail }
+  const r = map[which]
+  if (!r) return
+  let t = String(r.value || '').trim()
+  const at = t.indexOf('@')
+  if (at === -1) {
+    if (!t) {
+      uni.showToast({ title: '请先输入 @ 前面的邮箱账号', icon: 'none' })
+      return
+    }
+    r.value = `${t}@${d}`
+    return
+  }
+  const local = t.slice(0, at).trim()
+  if (!local) {
+    uni.showToast({ title: '请先输入 @ 前面的邮箱账号', icon: 'none' })
+    return
+  }
+  r.value = `${local}@${d}`
+}
 
 const loginEmail = ref('')
 const loginPassword = ref('')
@@ -539,5 +621,50 @@ async function doJoin() {
 .btn-ghost[disabled] {
   opacity: 0.45;
   color: #78716c;
+}
+
+.email-domain-hint {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #a8a29e;
+}
+.email-domains-scroll {
+  width: 100%;
+  margin-top: 12rpx;
+  white-space: nowrap;
+}
+.email-domains-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 12rpx;
+  padding: 4rpx 4rpx 8rpx 0;
+}
+.email-domain-chip {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6rpx;
+  padding: 14rpx 22rpx;
+  border-radius: 9999rpx;
+  background: #fafaf9;
+  border: 1rpx solid #e7e5e4;
+}
+.email-domain-chip:active {
+  opacity: 0.85;
+  background: #fff7ed;
+  border-color: rgba(155, 63, 0, 0.35);
+}
+.email-domain-name {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #9b3f00;
+}
+.email-domain-at {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #57534e;
 }
 </style>
