@@ -155,16 +155,35 @@ export const authApi = {
   me: () => request({ url: '/api/auth/me', method: 'GET' }),
   login: (email, password) =>
     request({ url: '/api/auth/login', method: 'POST', data: { email, password } }),
-  sendEmailCode: (email, purpose) =>
+  sendEmailCode: (email, purpose, extra = {}) =>
     request({
       url: '/api/auth/send-email-code',
       method: 'POST',
-      data: { email, purpose },
+      data: { email, purpose, ...extra },
     }),
   registerCouple: (data) =>
     request({ url: '/api/auth/register-couple', method: 'POST', data }),
   joinCouple: (data) =>
     request({ url: '/api/auth/join-couple', method: 'POST', data }),
+  /** @returns {Promise<object>} 多空间时 reject 的 payload 含 detail.error === 'pick_space' */
+  login: (email, password, coupleAccountId) =>
+    new Promise((resolve, reject) => {
+      uni.request({
+        url: `${BASE_URL}/api/auth/login`,
+        method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        data: {
+          email,
+          password,
+          ...(coupleAccountId != null ? { couple_account_id: coupleAccountId } : {}),
+        },
+        success: (res) => {
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
+          else reject(res.data || {})
+        },
+        fail: (err) => reject(err),
+      })
+    }),
 }
 
 /**

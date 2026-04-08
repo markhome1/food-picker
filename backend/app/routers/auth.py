@@ -1,7 +1,7 @@
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +16,7 @@ from ..mail_delivery import send_otp_email
 from ..models.couple import CoupleAccount, CoupleMember
 from ..models.email_otp import EmailOtp
 from ..models.otp_send_log import OtpSendLog
+from ..models.space_foundation import SpaceFoundation
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -72,6 +73,8 @@ def _email_otp_status() -> dict:
 class SendEmailCodeIn(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     purpose: OtpPurpose
+    max_members: Optional[int] = Field(default=None, ge=2, le=_ABSOLUTE_MEMBER_CAP)
+    join_code: Optional[str] = Field(default=None, max_length=32)
 
 
 class RegisterCoupleIn(BaseModel):
@@ -93,6 +96,33 @@ class JoinCoupleIn(BaseModel):
 class LoginIn(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=1, max_length=128)
+    couple_account_id: Optional[int] = Field(default=None)
+
+
+def _foundation_kind_for_max_members(max_members: int) -> str:
+    return "pair" if int(max_members) == 2 else "group"
+
+
+def _raise_if_cannot_found_space(session: Session, email: str, max_members: int) -> None:
+    """同一邮箱作为创建者：情侣（2 人）空间与好友组队（3+ 人）空间各仅能创建一次。"""
+    cap = min(max(int(max_members), 2), _ABSOLUTE_MEMBER_CAP)
+    kind = _foundation_kind_for_max_members(cap)
+    ex = session.exec(
+        select(SpaceFoundation).where(
+            SpaceFoundation.email == email,
+            SpaceFoundation.foundation_kind == kind,
+        )
+    ).first()
+    if ex:
+        if kind == "pair":
+            raise HTTPException(
+                status_code=400,
+                detail="该邮箱已创建过情侣（2 人）空间，无法再次创建",
+            )
+        raise HTTPException(
+            status_code=400,
+            detail="该邮箱已创建过好友组队空间，无法再次创建",
+        )
 
 
 def _member_count(session: Session, couple_id: int) -> int:
@@ -168,9 +198,27 @@ def send_email_code(body: SendEmailCodeIn, session: SessionDep):
     email = body.email.strip().lower()
     if not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="邮箱格式不正确")
-    exists = session.exec(select(CoupleMember).where(CoupleMember.email == email)).first()
-    if exists:
-        raise HTTPException(status_code=400, detail="该邮箱已注册")
+
+    if body.purpose == "register_couple":
+        max_m = body.max_members if body.max_members is not None else 2
+        max_m = min(max(int(max_m), 2), _ABSOLUTE_MEMBER_CAP)
+        _raise_if_cannot_found_space(session, email, max_m)
+    elif body.purpose == "join_couple":
+        jc = (body.join_code or "").strip()
+        if not jc:
+            raise HTTPException(status_code=400, detail="加入空间请先填写邀请码")
+        code = _norm_join_code(jc)
+        acc = session.exec(select(CoupleAccount).where(CoupleAccount.join_code == code)).first()
+        if not acc:
+            raise HTTPException(status_code=400, detail="邀请码无效")
+        in_space = session.exec(
+            select(CoupleMember).where(
+                CoupleMember.email == email,
+                CoupleMember.couple_account_id == acc.id,
+            )
+        ).first()
+        if in_space:
+            raise HTTPException(status_code=400, detail="该邮箱已在该空间中")
 
     _rate_check_otp_send(session, email)
 
@@ -254,11 +302,13 @@ def register_couple(body: RegisterCoupleIn, session: SessionDep):
     email = body.email.strip().lower()
     if not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="邮箱格式不正确")
-    exists = session.exec(select(CoupleMember).where(CoupleMember.email == email)).first()
-    if exists:
-        raise HTTPException(status_code=400, detail="该邮箱已注册")
+
+    cap = min(max(int(body.max_members), 2), _ABSOLUTE_MEMBER_CAP)
+    _raise_if_cannot_found_space(session, email, cap)
 
     _verify_and_clear_otp(session, email, "register_couple", body.verification_code)
+
+    _raise_if_cannot_found_space(session, email, cap)
 
     for _ in range(8):
         code = _new_join_code()
@@ -268,9 +318,6 @@ def register_couple(body: RegisterCoupleIn, session: SessionDep):
     else:
         raise HTTPException(status_code=500, detail="无法生成邀请码，请重试")
 
-    cap = min(int(body.max_members), _ABSOLUTE_MEMBER_CAP)
-    if cap < 2:
-        cap = 2
     acc = CoupleAccount(join_code=code, max_members=cap)
     session.add(acc)
     session.commit()
@@ -283,6 +330,13 @@ def register_couple(body: RegisterCoupleIn, session: SessionDep):
         display_name=(body.display_name or "").strip()[:120],
     )
     session.add(user)
+    session.add(
+        SpaceFoundation(
+            email=email,
+            foundation_kind=_foundation_kind_for_max_members(cap),
+            couple_account_id=acc.id,
+        )
+    )
     session.commit()
     session.refresh(user)
 
@@ -323,9 +377,14 @@ def join_couple(body: JoinCoupleIn, session: SessionDep):
     email = body.email.strip().lower()
     if not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="邮箱格式不正确")
-    exists = session.exec(select(CoupleMember).where(CoupleMember.email == email)).first()
-    if exists:
-        raise HTTPException(status_code=400, detail="该邮箱已注册")
+    already = session.exec(
+        select(CoupleMember).where(
+            CoupleMember.email == email,
+            CoupleMember.couple_account_id == acc.id,
+        )
+    ).first()
+    if already:
+        raise HTTPException(status_code=400, detail="该邮箱已在该空间中")
 
     _verify_and_clear_otp(session, email, "join_couple", body.verification_code)
 
@@ -360,9 +419,37 @@ def login(body: LoginIn, session: SessionDep):
     if not settings.jwt_secret.strip():
         raise HTTPException(status_code=503, detail="服务器未配置 JWT_SECRET")
     email = body.email.strip().lower()
-    user = session.exec(select(CoupleMember).where(CoupleMember.email == email)).first()
-    if not user or not _verify_password(body.password, user.password_hash):
+    cands = session.exec(select(CoupleMember).where(CoupleMember.email == email)).all()
+    matches = [u for u in cands if _verify_password(body.password, u.password_hash)]
+    if not matches:
         raise HTTPException(status_code=400, detail="邮箱或密码错误")
+    if len(matches) > 1:
+        if body.couple_account_id is None:
+            spaces = []
+            for u in matches:
+                a = session.get(CoupleAccount, u.couple_account_id)
+                spaces.append(
+                    {
+                        "couple_account_id": u.couple_account_id,
+                        "join_code": (a.join_code if a else ""),
+                    }
+                )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "pick_space",
+                    "message": "该邮箱在多个空间中，请选择要登录的空间",
+                    "spaces": spaces,
+                },
+            )
+        user = next(
+            (u for u in matches if u.couple_account_id == body.couple_account_id),
+            None,
+        )
+        if user is None:
+            raise HTTPException(status_code=400, detail="所选空间与邮箱或密码不匹配")
+    else:
+        user = matches[0]
     token = create_access_token(
         user_id=user.id,
         couple_account_id=user.couple_account_id,

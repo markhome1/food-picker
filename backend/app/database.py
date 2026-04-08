@@ -135,16 +135,140 @@ def _migrate_couple_columns():
                     )
 
 
+def _migrate_couple_member_email_constraints() -> None:
+    """去掉 couple_member.email 全局唯一，改为 (email, couple_account_id) 联合唯一。"""
+    insp = inspect(engine)
+    if "couple_member" not in insp.get_table_names():
+        return
+
+    def _has_uq_email_space() -> bool:
+        for uq in insp.get_unique_constraints("couple_member"):
+            cols = set(uq.get("column_names") or [])
+            if cols == {"email", "couple_account_id"}:
+                return True
+        for ix in insp.get_indexes("couple_member"):
+            if ix.get("unique") and set(ix.get("column_names") or []) == {"email", "couple_account_id"}:
+                return True
+        return False
+
+    if _has_uq_email_space():
+        return
+
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE couple_member_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        couple_account_id INTEGER NOT NULL,
+                        email VARCHAR(255) NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        display_name VARCHAR(120) NOT NULL DEFAULT '',
+                        created_at DATETIME,
+                        FOREIGN KEY(couple_account_id) REFERENCES coupleaccount(id),
+                        CONSTRAINT uq_couple_member_email_space UNIQUE (email, couple_account_id)
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO couple_member_new
+                    (id, couple_account_id, email, password_hash, display_name, created_at)
+                    SELECT id, couple_account_id, email, password_hash, display_name, created_at
+                    FROM couple_member
+                    """
+                )
+            )
+            conn.execute(text("DROP TABLE couple_member"))
+            conn.execute(text("ALTER TABLE couple_member_new RENAME TO couple_member"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_couple_member_email ON couple_member (email)"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_couple_member_couple_account_id "
+                    "ON couple_member (couple_account_id)"
+                )
+            )
+        return
+
+    with engine.begin() as conn:
+        for name in (
+            "couple_member_email_key",
+            "couplemember_email_key",
+        ):
+            conn.execute(text(f'ALTER TABLE couple_member DROP CONSTRAINT IF EXISTS "{name}"'))
+        conn.execute(text("DROP INDEX IF EXISTS ix_couple_member_email"))
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_couple_member_email_space "
+                "ON couple_member (email, couple_account_id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_couple_member_email ON couple_member (email)"
+            )
+        )
+
+
+def _backfill_space_foundation() -> None:
+    """为历史空间补创建记录，避免老用户重复创建同类空间。"""
+    from sqlmodel import Session, select
+
+    from .models.couple import CoupleAccount, CoupleMember
+    from .models.space_foundation import SpaceFoundation
+
+    insp = inspect(engine)
+    if "space_foundation" not in insp.get_table_names():
+        return
+    if "couple_member" not in insp.get_table_names():
+        return
+
+    with Session(engine) as session:
+        accounts = session.exec(select(CoupleAccount)).all()
+        for acc in accounts:
+            members = session.exec(
+                select(CoupleMember)
+                .where(CoupleMember.couple_account_id == acc.id)
+                .order_by(CoupleMember.created_at)
+            ).all()
+            if not members:
+                continue
+            founder = members[0]
+            kind = "pair" if (acc.max_members or 2) == 2 else "group"
+            exists = session.exec(
+                select(SpaceFoundation).where(
+                    SpaceFoundation.email == founder.email,
+                    SpaceFoundation.foundation_kind == kind,
+                )
+            ).first()
+            if exists:
+                continue
+            session.add(
+                SpaceFoundation(
+                    email=founder.email,
+                    foundation_kind=kind,
+                    couple_account_id=acc.id,
+                )
+            )
+        session.commit()
+
+
 def create_db_and_tables():
     # 确保情侣空间等表类已注册（某些入口可能先于 routers 加载 database）
     from .models import couple as _couple_models  # noqa: F401
     from .models import email_otp as _email_otp_models  # noqa: F401
     from .models import otp_send_log as _otp_send_log_models  # noqa: F401
+    from .models import space_foundation as _space_foundation_models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
     _migrate_sqlite_columns()
     _migrate_couple_columns()
     _migrate_coupleaccount_max_members()
+    _migrate_couple_member_email_constraints()
+    _backfill_space_foundation()
 
 
 def get_session():

@@ -29,7 +29,7 @@
           <text class="label">密码</text>
           <input class="input" v-model="loginPassword" password placeholder="至少 6 位" />
         </view>
-        <button class="btn primary" :loading="loading" @click="doLogin">登录</button>
+        <button class="btn primary" :loading="loading" @click="() => doLogin()">登录</button>
       </template>
 
       <template v-else-if="mode === 'register'">
@@ -137,7 +137,7 @@
         </view>
         <button class="btn primary" :loading="loading" @click="doJoin">加入空间</button>
         <text v-if="emailOtpHint" class="hint hint-warn">{{ emailOtpHint }}</text>
-        <text class="hint">人数达到创建者设定上限后无法再加入；加入前需验证邮箱。</text>
+        <text class="hint">请先填邀请码再获取验证码；人数满员后无法再加入。</text>
       </template>
     </view>
   </view>
@@ -252,7 +252,7 @@ async function sendRegCode() {
   }
   loading.value = true
   try {
-    await authApi.sendEmailCode(email, 'register_couple')
+    await authApi.sendEmailCode(email, 'register_couple', { max_members: registerMaxMembers() })
     uni.showToast({ title: '已发送，请查收邮件', icon: 'none' })
     startCooldown('reg')
   } finally {
@@ -266,9 +266,14 @@ async function sendJoinCode() {
     uni.showToast({ title: '请先填写邮箱', icon: 'none' })
     return
   }
+  const jc = joinCode.value.trim()
+  if (!jc) {
+    uni.showToast({ title: '请先填写邀请码', icon: 'none' })
+    return
+  }
   loading.value = true
   try {
-    await authApi.sendEmailCode(email, 'join_couple')
+    await authApi.sendEmailCode(email, 'join_couple', { join_code: jc })
     uni.showToast({ title: '已发送，请查收邮件', icon: 'none' })
     startCooldown('join')
   } finally {
@@ -276,13 +281,34 @@ async function sendJoinCode() {
   }
 }
 
-async function doLogin() {
+async function doLogin(coupleAccountId) {
   loading.value = true
   try {
-    const res = await authApi.login(loginEmail.value.trim(), loginPassword.value)
+    const res = await authApi.login(loginEmail.value.trim(), loginPassword.value, coupleAccountId)
     if (res.access_token) setAuthToken(res.access_token)
     uni.showToast({ title: '欢迎回来', icon: 'success' })
     setTimeout(() => uni.switchTab({ url: '/pages/pick/pick' }), 400)
+  } catch (raw) {
+    const d = raw && raw.detail
+    if (d && d.error === 'pick_space' && Array.isArray(d.spaces) && d.spaces.length) {
+      const labels = d.spaces.map((s) => {
+        const code = s.join_code || String(s.couple_account_id)
+        return `邀请码 ${code}`
+      })
+      uni.showActionSheet({
+        itemList: labels,
+        success: ({ tapIndex }) => {
+          const sid = d.spaces[tapIndex].couple_account_id
+          if (sid != null) doLogin(sid)
+        },
+      })
+    } else {
+      const msg =
+        typeof d === 'string'
+          ? d
+          : (d && d.message) || (typeof raw?.detail === 'string' && raw.detail) || '邮箱或密码错误'
+      uni.showToast({ title: String(msg), icon: 'none' })
+    }
   } finally {
     loading.value = false
   }

@@ -1,5 +1,6 @@
 from .category import Category
 from .couple import CoupleAccount, CoupleMember
+from .space_foundation import SpaceFoundation
 from .email_otp import EmailOtp
 from .otp_send_log import OtpSendLog
 from .restaurant import Restaurant, RestaurantCreate, RestaurantUpdate, RestaurantPublic
@@ -12,6 +13,7 @@ DiningRecord.model_rebuild()
 __all__ = [
     "CoupleAccount",
     "CoupleMember",
+    "SpaceFoundation",
     "EmailOtp",
     "OtpSendLog",
     "Restaurant", "RestaurantCreate", "RestaurantUpdate", "RestaurantPublic",

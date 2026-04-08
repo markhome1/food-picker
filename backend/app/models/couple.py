@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -14,13 +15,16 @@ class CoupleAccount(SQLModel, table=True):
 
 
 class CoupleMember(SQLModel, table=True):
-    """避免表名 user（SQLite 保留字）冲突，使用 couple_member。"""
+    """同一邮箱可加入多个空间；同一空间内邮箱唯一。"""
 
     __tablename__ = "couple_member"
+    __table_args__ = (
+        UniqueConstraint("email", "couple_account_id", name="uq_couple_member_email_space"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     couple_account_id: int = Field(foreign_key="coupleaccount.id", index=True)
-    email: str = Field(unique=True, index=True, max_length=255)
+    email: str = Field(index=True, max_length=255)
     password_hash: str = Field(max_length=255)
     display_name: str = Field(default="", max_length=120)
     created_at: datetime = Field(default_factory=datetime.now)
