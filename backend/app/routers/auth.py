@@ -29,7 +29,7 @@ _CODE_RE = re.compile(r"^\d{6}$")
 _OTP_HOUR_LIMIT = 5
 _OTP_RESEND_SECONDS = 60
 
-OtpPurpose = Literal["register_couple", "join_couple"]
+OtpPurpose = Literal["register_couple", "join_couple", "reset_password"]
 
 
 def _norm_join_code(code: str) -> str:
@@ -97,6 +97,12 @@ class LoginIn(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=1, max_length=128)
     couple_account_id: Optional[int] = Field(default=None)
+
+
+class ResetPasswordIn(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+    verification_code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(..., min_length=6, max_length=128)
 
 
 def _foundation_kind_for_max_members(max_members: int) -> str:
@@ -219,6 +225,10 @@ def send_email_code(body: SendEmailCodeIn, session: SessionDep):
         ).first()
         if in_space:
             raise HTTPException(status_code=400, detail="该邮箱已在该空间中")
+    elif body.purpose == "reset_password":
+        members = session.exec(select(CoupleMember).where(CoupleMember.email == email)).all()
+        if not members:
+            raise HTTPException(status_code=400, detail="该邮箱未注册")
 
     _rate_check_otp_send(session, email)
 
@@ -410,6 +420,28 @@ def join_couple(body: JoinCoupleIn, session: SessionDep):
         "couple_account_id": acc.id,
         "user": {"id": user.id, "email": user.email, "display_name": user.display_name},
     }
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordIn, session: SessionDep):
+    """凭邮箱验证码重置密码；同一邮箱在多个空间下会同步更新为同一新密码。"""
+    if not is_auth_enabled():
+        raise HTTPException(status_code=400, detail="当前环境未开启登录")
+    if not settings.jwt_secret.strip():
+        raise HTTPException(status_code=503, detail="服务器未配置 JWT_SECRET")
+    email = body.email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+    members = session.exec(select(CoupleMember).where(CoupleMember.email == email)).all()
+    if not members:
+        raise HTTPException(status_code=400, detail="该邮箱未注册")
+    _verify_and_clear_otp(session, email, "reset_password", body.verification_code)
+    new_hash = _hash_password(body.new_password)
+    for m in members:
+        m.password_hash = new_hash
+        session.add(m)
+    session.commit()
+    return {"code": 200, "message": "密码已重置，请使用新密码登录"}
 
 
 @router.post("/login")

@@ -21,33 +21,90 @@
 
     <view class="card">
       <template v-if="mode === 'login'">
-        <view class="field">
-          <text class="label">邮箱</text>
-          <input
-            class="input"
-            v-model="loginEmail"
-            type="text"
-            placeholder="输入用户名或完整邮箱，如 zhangsan"
-          />
-          <view v-if="loginEmailSuggestList.length" class="email-suggest-wrap">
-            <text class="email-suggest-hint">猜你想用（点选填入）</text>
-            <scroll-view class="email-suggest-scroll" scroll-y :show-scrollbar="false">
-              <view
-                v-for="line in loginEmailSuggestList"
-                :key="'ls-' + line"
-                class="email-suggest-item"
-                @click="loginEmail = line"
-              >
-                <text class="email-suggest-item-t">{{ line }}</text>
-              </view>
-            </scroll-view>
+        <template v-if="loginSubMode === 'login'">
+          <view class="field">
+            <text class="label">邮箱</text>
+            <input
+              class="input"
+              v-model="loginEmail"
+              type="text"
+              placeholder="输入用户名或完整邮箱，如 zhangsan"
+            />
+            <view v-if="loginEmailSuggestList.length" class="email-suggest-wrap">
+              <text class="email-suggest-hint">猜你想用（点选填入）</text>
+              <scroll-view class="email-suggest-scroll" scroll-y :show-scrollbar="false">
+                <view
+                  v-for="line in loginEmailSuggestList"
+                  :key="'ls-' + line"
+                  class="email-suggest-item"
+                  @click="loginEmail = line"
+                >
+                  <text class="email-suggest-item-t">{{ line }}</text>
+                </view>
+              </scroll-view>
+            </view>
           </view>
-        </view>
-        <view class="field">
-          <text class="label">密码</text>
-          <input class="input" v-model="loginPassword" password placeholder="至少 6 位" />
-        </view>
-        <button class="btn primary" :loading="loading" @click="() => doLogin()">登录</button>
+          <view class="field">
+            <text class="label">密码</text>
+            <input class="input" v-model="loginPassword" password placeholder="至少 6 位" />
+          </view>
+          <button class="btn primary" :loading="loading" @click="() => doLogin()">登录</button>
+          <text class="forgot-link" @click="loginSubMode = 'forgot'">忘记密码？</text>
+        </template>
+        <template v-else>
+          <text class="back-link" @click="loginSubMode = 'login'">← 返回登录</text>
+          <view class="field">
+            <text class="label">注册邮箱</text>
+            <input
+              class="input"
+              v-model="forgotEmail"
+              type="text"
+              placeholder="输入已注册的完整邮箱"
+            />
+            <view v-if="forgotEmailSuggestList.length" class="email-suggest-wrap">
+              <text class="email-suggest-hint">猜你想用（点选填入）</text>
+              <scroll-view class="email-suggest-scroll" scroll-y :show-scrollbar="false">
+                <view
+                  v-for="line in forgotEmailSuggestList"
+                  :key="'fs-' + line"
+                  class="email-suggest-item"
+                  @click="forgotEmail = line"
+                >
+                  <text class="email-suggest-item-t">{{ line }}</text>
+                </view>
+              </scroll-view>
+            </view>
+          </view>
+          <view class="field">
+            <text class="label">邮箱验证码</text>
+            <view class="otp-row">
+              <input
+                class="input otp-input"
+                v-model="forgotOtp"
+                type="text"
+                maxlength="6"
+                placeholder="6 位数字"
+              />
+              <button
+                class="btn-ghost"
+                :disabled="forgotCooldown > 0 || loading"
+                @click="sendForgotCode"
+              >
+                {{ forgotCooldown > 0 ? forgotCooldown + 's' : '获取验证码' }}
+              </button>
+            </view>
+          </view>
+          <view class="field">
+            <text class="label">新密码</text>
+            <input class="input" v-model="forgotPwd1" password placeholder="至少 6 位" />
+          </view>
+          <view class="field">
+            <text class="label">确认新密码</text>
+            <input class="input" v-model="forgotPwd2" password placeholder="再次输入" />
+          </view>
+          <button class="btn primary" :loading="loading" @click="doResetPassword">重置密码</button>
+          <text class="hint">验证码与注册相同，发到邮箱；限流防刷。若邮箱被盗，请先保护邮箱安全。</text>
+        </template>
       </template>
 
       <template v-else-if="mode === 'register'">
@@ -198,11 +255,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { authApi, setAuthToken, request } from '../../api'
 
 const mode = ref('login')
+const loginSubMode = ref('login')
 const loading = ref(false)
 const emailOtpHint = ref('')
 
@@ -228,6 +286,12 @@ const joinCode = ref('')
 const joinEmail = ref('')
 const joinPassword = ref('')
 const joinName = ref('')
+const forgotEmail = ref('')
+const forgotOtp = ref('')
+const forgotPwd1 = ref('')
+const forgotPwd2 = ref('')
+const forgotCooldown = ref(0)
+let forgotTimer = null
 
 /** 主流邮箱后缀：根据 @ 前前缀生成 zhangsan@qq.com 等整行提示 */
 const EMAIL_SUFFIX_DOMAINS = [
@@ -276,6 +340,11 @@ function buildEmailSuggestList(raw) {
 const loginEmailSuggestList = computed(() => buildEmailSuggestList(loginEmail.value))
 const regEmailSuggestList = computed(() => buildEmailSuggestList(regEmail.value))
 const joinEmailSuggestList = computed(() => buildEmailSuggestList(joinEmail.value))
+const forgotEmailSuggestList = computed(() => buildEmailSuggestList(forgotEmail.value))
+
+watch(mode, (m) => {
+  if (m !== 'login') loginSubMode.value = 'login'
+})
 
 /** 情侣 2 人；好友组队可选 3～20 人 */
 const spacePreset = ref('couple')
@@ -320,6 +389,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (regTimer) clearInterval(regTimer)
   if (joinTimer) clearInterval(joinTimer)
+  if (forgotTimer) clearInterval(forgotTimer)
 })
 
 function startCooldown(which) {
@@ -331,6 +401,16 @@ function startCooldown(which) {
       if (regCooldown.value <= 0 && regTimer) {
         clearInterval(regTimer)
         regTimer = null
+      }
+    }, 1000)
+  } else if (which === 'forgot') {
+    forgotCooldown.value = 60
+    if (forgotTimer) clearInterval(forgotTimer)
+    forgotTimer = setInterval(() => {
+      forgotCooldown.value--
+      if (forgotCooldown.value <= 0 && forgotTimer) {
+        clearInterval(forgotTimer)
+        forgotTimer = null
       }
     }, 1000)
   } else {
@@ -357,6 +437,55 @@ async function sendRegCode() {
     await authApi.sendEmailCode(email, 'register_couple', { max_members: registerMaxMembers() })
     uni.showToast({ title: '已发送，请查收邮件', icon: 'none' })
     startCooldown('reg')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function sendForgotCode() {
+  const email = forgotEmail.value.trim()
+  if (!email) {
+    uni.showToast({ title: '请先填写邮箱', icon: 'none' })
+    return
+  }
+  loading.value = true
+  try {
+    await authApi.sendEmailCode(email, 'reset_password')
+    uni.showToast({ title: '已发送，请查收邮件', icon: 'none' })
+    startCooldown('forgot')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function doResetPassword() {
+  const email = forgotEmail.value.trim()
+  if (!email) {
+    uni.showToast({ title: '请填写邮箱', icon: 'none' })
+    return
+  }
+  if (forgotPwd1.value.length < 6) {
+    uni.showToast({ title: '新密码至少 6 位', icon: 'none' })
+    return
+  }
+  if (forgotPwd1.value !== forgotPwd2.value) {
+    uni.showToast({ title: '两次密码不一致', icon: 'none' })
+    return
+  }
+  loading.value = true
+  try {
+    await authApi.resetPassword({
+      email,
+      verification_code: forgotOtp.value.trim(),
+      new_password: forgotPwd1.value,
+    })
+    uni.showToast({ title: '已重置，请登录', icon: 'success' })
+    loginEmail.value = email
+    loginPassword.value = forgotPwd1.value
+    forgotOtp.value = ''
+    forgotPwd1.value = ''
+    forgotPwd2.value = ''
+    loginSubMode.value = 'login'
   } finally {
     loading.value = false
   }
@@ -641,6 +770,22 @@ async function doJoin() {
 .btn-ghost[disabled] {
   opacity: 0.45;
   color: #78716c;
+}
+
+.forgot-link {
+  display: block;
+  margin-top: 28rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #9b3f00;
+  font-weight: 600;
+}
+.back-link {
+  display: block;
+  margin-bottom: 24rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #57534e;
 }
 
 .email-suggest-wrap {

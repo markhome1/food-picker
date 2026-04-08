@@ -165,6 +165,8 @@ export const authApi = {
     request({ url: '/api/auth/register-couple', method: 'POST', data }),
   joinCouple: (data) =>
     request({ url: '/api/auth/join-couple', method: 'POST', data }),
+  resetPassword: (data) =>
+    request({ url: '/api/auth/reset-password', method: 'POST', data }),
   /** @returns {Promise<object>} 多空间时 reject 的 payload 含 detail.error === 'pick_space' */
   login: (email, password, coupleAccountId) =>
     new Promise((resolve, reject) => {
