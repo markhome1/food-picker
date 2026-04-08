@@ -12,6 +12,18 @@ from .database import is_sqlite_url
 logger = logging.getLogger(__name__)
 
 
+def _normalize_resend_from(addr: str) -> str:
+    """Resend 要求 from 为邮箱；若只配置了域名（如 fpick.asia）则补全为 noreply@域名。"""
+    a = (addr or "").strip()
+    if not a:
+        return ""
+    if "@" in a:
+        return a
+    if "." in a and " " not in a and "<" not in a:
+        return f"noreply@{a.lower()}"
+    return a
+
+
 def _resend_user_message(status_code: int, body_text: str) -> str:
     """把 Resend 错误转成用户可理解的提示（不含密钥）。"""
     try:
@@ -26,7 +38,10 @@ def _resend_user_message(status_code: int, body_text: str) -> str:
     if status_code == 403 and "onboarding" in low:
         return "当前使用 Resend 测试发件地址，只能发到授权测试邮箱；请配置已验证域名下的 RESEND_FROM，或到 Resend 添加收件测试邮箱。"
     if "from" in low or "domain" in low or "verify" in low:
-        return "发件人地址无效或域名未在 Resend 完成验证，请检查 RESEND_FROM（须为 @fpick.asia 等已验证域名下的邮箱）。"
+        return (
+            "发件人无效或域名未在 Resend 验证。请在 Vercel 设置 RESEND_FROM 为完整邮箱，"
+            "例如 noreply@fpick.asia（不要只填 fpick.asia）。"
+        )
     if raw:
         return f"邮件服务返回：{raw[:240]}"
     return "邮件服务暂时不可用，请稍后重试"
@@ -39,7 +54,8 @@ def send_otp_email(to_email: str, code: str) -> None:
     text_body = f"你的验证码是 {code} ，{ttl} 分钟内有效。如非本人操作请忽略。"
 
     if settings.resend_api_key.strip():
-        from_addr = (settings.resend_from or "").strip() or "onboarding@resend.dev"
+        raw_from = (settings.resend_from or "").strip()
+        from_addr = _normalize_resend_from(raw_from) or "onboarding@resend.dev"
         payload = {
             "from": from_addr,
             "to": [to_email],
