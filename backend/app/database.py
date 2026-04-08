@@ -82,6 +82,28 @@ def _migrate_sqlite_columns():
                 conn.execute(text(f"ALTER TABLE restaurant ADD COLUMN {col_name} {col_type}"))
 
 
+def _migrate_coupleaccount_max_members():
+    """为 coupleaccount 补 max_members（旧库默认 2，与原先「仅两人」行为一致）。"""
+    insp = inspect(engine)
+    if "coupleaccount" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("coupleaccount")}
+    if "max_members" in cols:
+        return
+    with engine.begin() as conn:
+        if engine.dialect.name == "sqlite":
+            conn.execute(
+                text("ALTER TABLE coupleaccount ADD COLUMN max_members INTEGER NOT NULL DEFAULT 2")
+            )
+        else:
+            conn.execute(
+                text(
+                    "ALTER TABLE coupleaccount ADD COLUMN IF NOT EXISTS "
+                    "max_members INTEGER NOT NULL DEFAULT 2"
+                )
+            )
+
+
 def _migrate_couple_columns():
     """为旧库补 couple_account_id（SQLite / Postgres）。"""
     insp = inspect(engine)
@@ -122,6 +144,7 @@ def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
     _migrate_sqlite_columns()
     _migrate_couple_columns()
+    _migrate_coupleaccount_max_members()
 
 
 def get_session():

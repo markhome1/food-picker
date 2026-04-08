@@ -149,7 +149,7 @@ export function importOcrUpload(filePath) {
   })
 }
 
-// 登录 / 情侣空间
+// 登录 / 共享空间（按 couple_account_id 隔离数据）
 export const authApi = {
   status: () => request({ url: '/api/auth/status', method: 'GET', silent: true }),
   me: () => request({ url: '/api/auth/me', method: 'GET' }),

@@ -52,7 +52,7 @@ settings = Settings()
 
 
 def is_auth_enabled() -> bool:
-    """是否要求登录并按情侣空间隔离数据。AUTH_ENABLED 显式优先，否则非 SQLite 默认开启。"""
+    """是否要求登录并按共享空间（组）隔离数据。AUTH_ENABLED 显式优先，否则非 SQLite 默认开启。"""
     v = os.getenv("AUTH_ENABLED")
     if v is not None:
         return v.strip().lower() in ("1", "true", "yes")

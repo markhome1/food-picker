@@ -5,10 +5,11 @@ from sqlmodel import Field, SQLModel
 
 
 class CoupleAccount(SQLModel, table=True):
-    """情侣空间：一个空间恰好两名成员（两条 CoupleMember）。"""
+    """共享空间：成员用邀请码加入，人数上限由 max_members 决定（与 couple_member 关联）。"""
 
     id: Optional[int] = Field(default=None, primary_key=True)
     join_code: str = Field(unique=True, index=True, max_length=32)
+    max_members: int = Field(default=2)
     created_at: datetime = Field(default_factory=datetime.now)
 
 

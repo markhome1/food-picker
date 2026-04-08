@@ -21,7 +21,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
-_MAX_MEMBERS = 2
+# 单空间人数上限（创建时可设更小，全局不超过此值）
+_ABSOLUTE_MEMBER_CAP = 20
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _CODE_RE = re.compile(r"^\d{6}$")
 _OTP_HOUR_LIMIT = 5
@@ -78,6 +79,7 @@ class RegisterCoupleIn(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
     display_name: str = Field(default="", max_length=120)
     verification_code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    max_members: int = Field(default=2, ge=2, le=_ABSOLUTE_MEMBER_CAP)
 
 
 class JoinCoupleIn(BaseModel):
@@ -223,6 +225,10 @@ def auth_me(session: SessionDep, ctx: AuthCtxDep):
         raise HTTPException(status_code=401, detail="登录无效")
     acc = session.get(CoupleAccount, u.couple_account_id)
     n = _member_count(session, u.couple_account_id)
+    cap = min(
+        (acc.max_members if acc and acc.max_members else 2),
+        _ABSOLUTE_MEMBER_CAP,
+    )
     return {
         "code": 200,
         "auth_required": True,
@@ -234,7 +240,8 @@ def auth_me(session: SessionDep, ctx: AuthCtxDep):
         },
         "join_code": acc.join_code if acc else None,
         "member_count": n,
-        "member_cap": _MAX_MEMBERS,
+        "member_cap": cap,
+        "max_members": cap,
     }
 
 
@@ -261,7 +268,10 @@ def register_couple(body: RegisterCoupleIn, session: SessionDep):
     else:
         raise HTTPException(status_code=500, detail="无法生成邀请码，请重试")
 
-    acc = CoupleAccount(join_code=code)
+    cap = min(int(body.max_members), _ABSOLUTE_MEMBER_CAP)
+    if cap < 2:
+        cap = 2
+    acc = CoupleAccount(join_code=code, max_members=cap)
     session.add(acc)
     session.commit()
     session.refresh(acc)
@@ -301,8 +311,14 @@ def join_couple(body: JoinCoupleIn, session: SessionDep):
     acc = session.exec(select(CoupleAccount).where(CoupleAccount.join_code == code)).first()
     if not acc:
         raise HTTPException(status_code=400, detail="邀请码无效")
-    if _member_count(session, acc.id) >= _MAX_MEMBERS:
-        raise HTTPException(status_code=400, detail="该情侣空间已满员（仅支持两人）")
+    cap = min(int(acc.max_members or 2), _ABSOLUTE_MEMBER_CAP)
+    if cap < 2:
+        cap = 2
+    if _member_count(session, acc.id) >= cap:
+        raise HTTPException(
+            status_code=400,
+            detail=f"该空间已满员（最多 {cap} 人）",
+        )
 
     email = body.email.strip().lower()
     if not _EMAIL_RE.match(email):

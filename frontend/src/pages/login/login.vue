@@ -5,7 +5,7 @@
         <image class="hero-logo" src="/static/logo.svg" mode="aspectFit" />
         <text class="hero-title">food-picker</text>
       </view>
-      <text class="hero-sub">情侣专属 · 最多两人共享同一空间</text>
+      <text class="hero-sub">情侣或好友组队 · 每组最多 20 人 · 数据仅组内可见</text>
     </view>
 
     <view class="tabs">
@@ -33,9 +33,39 @@
       </template>
 
       <template v-else-if="mode === 'register'">
+        <view class="field space-preset-block">
+          <text class="label">空间类型</text>
+          <view class="space-preset-row">
+            <view
+              :class="['space-chip', spacePreset === 'couple' ? 'space-chip-on' : '']"
+              @click="spacePreset = 'couple'"
+            >
+              <text class="space-chip-t">情侣（2 人）</text>
+            </view>
+            <view
+              :class="['space-chip', spacePreset === 'group' ? 'space-chip-on' : '']"
+              @click="spacePreset = 'group'"
+            >
+              <text class="space-chip-t">好友组队</text>
+            </view>
+          </view>
+          <picker
+            v-if="spacePreset === 'group'"
+            mode="selector"
+            :range="groupSizeLabels"
+            :value="groupSizeIndex"
+            @change="onGroupSizeChange"
+          >
+            <view class="picker-row">
+              <text class="label-inline">人数上限</text>
+              <text class="picker-value">{{ groupSizeLabels[groupSizeIndex] }}</text>
+              <text class="picker-chev">›</text>
+            </view>
+          </picker>
+        </view>
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="regEmail" type="text" placeholder="第一人注册用" />
+          <input class="input" v-model="regEmail" type="text" placeholder="创建者邮箱" />
         </view>
         <view class="field">
           <text class="label">邮箱验证码</text>
@@ -64,9 +94,9 @@
           <text class="label">昵称（可选）</text>
           <input class="input" v-model="regName" type="text" placeholder="怎么称呼你" />
         </view>
-        <button class="btn primary" :loading="loading" @click="doRegister">创建情侣空间</button>
+        <button class="btn primary" :loading="loading" @click="doRegister">创建空间</button>
         <text v-if="emailOtpHint" class="hint hint-warn">{{ emailOtpHint }}</text>
-        <text class="hint">请先获取邮箱验证码；创建成功后会得到邀请码发给另一半。</text>
+        <text class="hint">请先获取邮箱验证码；创建成功后会得到邀请码，发给伙伴加入（每组最多 20 人）。</text>
       </template>
 
       <template v-else>
@@ -76,7 +106,7 @@
         </view>
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="joinEmail" type="text" placeholder="第二人使用不同邮箱" />
+          <input class="input" v-model="joinEmail" type="text" placeholder="使用未注册过的邮箱" />
         </view>
         <view class="field">
           <text class="label">邮箱验证码</text>
@@ -105,9 +135,9 @@
           <text class="label">昵称（可选）</text>
           <input class="input" v-model="joinName" type="text" placeholder="怎么称呼你" />
         </view>
-        <button class="btn primary" :loading="loading" @click="doJoin">加入情侣空间</button>
+        <button class="btn primary" :loading="loading" @click="doJoin">加入空间</button>
         <text v-if="emailOtpHint" class="hint hint-warn">{{ emailOtpHint }}</text>
-        <text class="hint">每个空间仅 2 个账号；加入前需验证邮箱。</text>
+        <text class="hint">人数达到创建者设定上限后无法再加入；加入前需验证邮箱。</text>
       </template>
     </view>
   </view>
@@ -144,6 +174,21 @@ const joinCode = ref('')
 const joinEmail = ref('')
 const joinPassword = ref('')
 const joinName = ref('')
+
+/** 情侣 2 人；好友组队可选 3～20 人 */
+const spacePreset = ref('couple')
+const groupSizeIndex = ref(0)
+const groupSizeLabels = Array.from({ length: 18 }, (_, i) => `${i + 3} 人`)
+
+function onGroupSizeChange(e) {
+  const v = e.detail && e.detail.value
+  groupSizeIndex.value = typeof v === 'number' ? v : parseInt(String(v), 10) || 0
+}
+
+function registerMaxMembers() {
+  if (spacePreset.value === 'couple') return 2
+  return groupSizeIndex.value + 3
+}
 
 // 勿在此调用 checkAuthGate：无 token 时会 reLaunch 本页，H5 上 onShow 易在输入时重复触发导致整页重载、输入被清空。
 onShow(() => {
@@ -251,10 +296,11 @@ async function doRegister() {
       password: regPassword.value,
       display_name: regName.value.trim(),
       verification_code: regOtp.value.trim(),
+      max_members: registerMaxMembers(),
     })
     if (res.access_token) setAuthToken(res.access_token)
     uni.showModal({
-      title: '邀请码（请发给另一半）',
+      title: '邀请码（发给伙伴）',
       content: res.join_code || '请在「报表」页退出重新登录查看账号信息',
       showCancel: false,
       success: () => uni.switchTab({ url: '/pages/pick/pick' }),
@@ -347,6 +393,60 @@ async function doJoin() {
 }
 .field {
   margin-bottom: 28rpx;
+}
+.space-preset-block {
+  margin-bottom: 28rpx;
+}
+.space-preset-row {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+  margin-top: 10rpx;
+}
+.space-chip {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 12rpx;
+  border-radius: 20rpx;
+  background: #f5f5f4;
+  border: 2rpx solid transparent;
+}
+.space-chip-on {
+  background: #fff7ed;
+  border-color: rgba(155, 63, 0, 0.45);
+}
+.space-chip-t {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #57534e;
+}
+.space-chip-on .space-chip-t {
+  color: #9b3f00;
+}
+.picker-row {
+  margin-top: 16rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  background: #f5f5f4;
+  border-radius: 20rpx;
+}
+.label-inline {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #78716c;
+  flex: 1;
+}
+.picker-value {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1c1917;
+  margin-right: 8rpx;
+}
+.picker-chev {
+  font-size: 32rpx;
+  color: #a8a29e;
 }
 .label {
   display: block;
