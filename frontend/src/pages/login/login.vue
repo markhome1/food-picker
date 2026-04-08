@@ -23,21 +23,25 @@
       <template v-if="mode === 'login'">
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="loginEmail" type="text" placeholder="先输入账号，再点下面后缀" />
-          <text class="email-domain-hint">常用后缀（点选补全 @ 后域名）</text>
-          <scroll-view class="email-domains-scroll" scroll-x :show-scrollbar="false" enable-flex>
-            <view class="email-domains-row">
+          <input
+            class="input"
+            v-model="loginEmail"
+            type="text"
+            placeholder="输入用户名或完整邮箱，如 zhangsan"
+          />
+          <view v-if="loginEmailSuggestList.length" class="email-suggest-wrap">
+            <text class="email-suggest-hint">猜你想用（点选填入）</text>
+            <scroll-view class="email-suggest-scroll" scroll-y :show-scrollbar="false">
               <view
-                v-for="item in commonEmailDomains"
-                :key="'l-' + item.domain"
-                class="email-domain-chip"
-                @click="applyEmailDomain('login', item.domain)"
+                v-for="line in loginEmailSuggestList"
+                :key="'ls-' + line"
+                class="email-suggest-item"
+                @click="loginEmail = line"
               >
-                <text class="email-domain-name">{{ item.label }}</text>
-                <text class="email-domain-at">@{{ item.domain }}</text>
+                <text class="email-suggest-item-t">{{ line }}</text>
               </view>
-            </view>
-          </scroll-view>
+            </scroll-view>
+          </view>
         </view>
         <view class="field">
           <text class="label">密码</text>
@@ -79,21 +83,25 @@
         </view>
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="regEmail" type="text" placeholder="先输入账号，再点下面后缀" />
-          <text class="email-domain-hint">常用后缀（点选补全 @ 后域名）</text>
-          <scroll-view class="email-domains-scroll" scroll-x :show-scrollbar="false" enable-flex>
-            <view class="email-domains-row">
+          <input
+            class="input"
+            v-model="regEmail"
+            type="text"
+            placeholder="输入用户名或完整邮箱，如 zhangsan"
+          />
+          <view v-if="regEmailSuggestList.length" class="email-suggest-wrap">
+            <text class="email-suggest-hint">猜你想用（点选填入）</text>
+            <scroll-view class="email-suggest-scroll" scroll-y :show-scrollbar="false">
               <view
-                v-for="item in commonEmailDomains"
-                :key="'r-' + item.domain"
-                class="email-domain-chip"
-                @click="applyEmailDomain('reg', item.domain)"
+                v-for="line in regEmailSuggestList"
+                :key="'rs-' + line"
+                class="email-suggest-item"
+                @click="regEmail = line"
               >
-                <text class="email-domain-name">{{ item.label }}</text>
-                <text class="email-domain-at">@{{ item.domain }}</text>
+                <text class="email-suggest-item-t">{{ line }}</text>
               </view>
-            </view>
-          </scroll-view>
+            </scroll-view>
+          </view>
         </view>
         <view class="field">
           <text class="label">邮箱验证码</text>
@@ -134,21 +142,25 @@
         </view>
         <view class="field">
           <text class="label">邮箱</text>
-          <input class="input" v-model="joinEmail" type="text" placeholder="先输入账号，再点下面后缀" />
-          <text class="email-domain-hint">常用后缀（点选补全 @ 后域名）</text>
-          <scroll-view class="email-domains-scroll" scroll-x :show-scrollbar="false" enable-flex>
-            <view class="email-domains-row">
+          <input
+            class="input"
+            v-model="joinEmail"
+            type="text"
+            placeholder="输入用户名或完整邮箱，如 zhangsan"
+          />
+          <view v-if="joinEmailSuggestList.length" class="email-suggest-wrap">
+            <text class="email-suggest-hint">猜你想用（点选填入）</text>
+            <scroll-view class="email-suggest-scroll" scroll-y :show-scrollbar="false">
               <view
-                v-for="item in commonEmailDomains"
-                :key="'j-' + item.domain"
-                class="email-domain-chip"
-                @click="applyEmailDomain('join', item.domain)"
+                v-for="line in joinEmailSuggestList"
+                :key="'js-' + line"
+                class="email-suggest-item"
+                @click="joinEmail = line"
               >
-                <text class="email-domain-name">{{ item.label }}</text>
-                <text class="email-domain-at">@{{ item.domain }}</text>
+                <text class="email-suggest-item-t">{{ line }}</text>
               </view>
-            </view>
-          </scroll-view>
+            </scroll-view>
+          </view>
         </view>
         <view class="field">
           <text class="label">邮箱验证码</text>
@@ -186,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { authApi, setAuthToken, request } from '../../api'
 
@@ -207,46 +219,6 @@ const tabList = [
   { key: 'join', label: '加入空间' },
 ]
 
-/** 点选后拼到 @ 后面（或替换已有域名） */
-const commonEmailDomains = [
-  { domain: 'qq.com', label: 'QQ' },
-  { domain: 'gmail.com', label: 'Gmail' },
-  { domain: '163.com', label: '163' },
-  { domain: '126.com', label: '126' },
-  { domain: 'foxmail.com', label: 'Foxmail' },
-  { domain: 'outlook.com', label: 'Outlook' },
-  { domain: 'hotmail.com', label: 'Hotmail' },
-  { domain: 'icloud.com', label: 'iCloud' },
-  { domain: 'sina.com', label: '新浪' },
-  { domain: 'yeah.net', label: 'Yeah' },
-]
-
-function applyEmailDomain(which, domain) {
-  const d = String(domain || '')
-    .trim()
-    .replace(/^@/, '')
-  if (!d) return
-  const map = { login: loginEmail, reg: regEmail, join: joinEmail }
-  const r = map[which]
-  if (!r) return
-  let t = String(r.value || '').trim()
-  const at = t.indexOf('@')
-  if (at === -1) {
-    if (!t) {
-      uni.showToast({ title: '请先输入 @ 前面的邮箱账号', icon: 'none' })
-      return
-    }
-    r.value = `${t}@${d}`
-    return
-  }
-  const local = t.slice(0, at).trim()
-  if (!local) {
-    uni.showToast({ title: '请先输入 @ 前面的邮箱账号', icon: 'none' })
-    return
-  }
-  r.value = `${local}@${d}`
-}
-
 const loginEmail = ref('')
 const loginPassword = ref('')
 const regEmail = ref('')
@@ -256,6 +228,54 @@ const joinCode = ref('')
 const joinEmail = ref('')
 const joinPassword = ref('')
 const joinName = ref('')
+
+/** 主流邮箱后缀：根据 @ 前前缀生成 zhangsan@qq.com 等整行提示 */
+const EMAIL_SUFFIX_DOMAINS = [
+  'qq.com',
+  'gmail.com',
+  '163.com',
+  '126.com',
+  'foxmail.com',
+  'outlook.com',
+  'hotmail.com',
+  'icloud.com',
+  'sina.com',
+  'yeah.net',
+]
+
+function emailLocalPart(value) {
+  const t = String(value ?? '').trim()
+  if (!t) return ''
+  const at = t.indexOf('@')
+  if (at === -1) return t
+  return t.slice(0, at).trim()
+}
+
+function isCompleteKnownProviderEmail(raw) {
+  const t = String(raw ?? '').trim()
+  const at = t.indexOf('@')
+  if (at <= 0) return false
+  if (t.indexOf('@', at + 1) !== -1) return false
+  const dom = t.slice(at + 1).toLowerCase()
+  return EMAIL_SUFFIX_DOMAINS.includes(dom)
+}
+
+function buildEmailSuggestList(raw) {
+  const local = emailLocalPart(raw)
+  if (!local) return []
+  if (isCompleteKnownProviderEmail(raw)) return []
+  const cur = String(raw ?? '').trim().toLowerCase()
+  const list = []
+  for (const d of EMAIL_SUFFIX_DOMAINS) {
+    const full = `${local}@${d}`
+    if (full.toLowerCase() !== cur) list.push(full)
+  }
+  return list
+}
+
+const loginEmailSuggestList = computed(() => buildEmailSuggestList(loginEmail.value))
+const regEmailSuggestList = computed(() => buildEmailSuggestList(regEmail.value))
+const joinEmailSuggestList = computed(() => buildEmailSuggestList(joinEmail.value))
 
 /** 情侣 2 人；好友组队可选 3～20 人 */
 const spacePreset = ref('couple')
@@ -623,48 +643,32 @@ async function doJoin() {
   color: #78716c;
 }
 
-.email-domain-hint {
+.email-suggest-wrap {
+  margin-top: 12rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid #e7e5e4;
+  background: #fafaf9;
+  overflow: hidden;
+}
+.email-suggest-hint {
   display: block;
-  margin-top: 10rpx;
+  padding: 12rpx 20rpx 8rpx;
   font-size: 22rpx;
   color: #a8a29e;
 }
-.email-domains-scroll {
-  width: 100%;
-  margin-top: 12rpx;
-  white-space: nowrap;
+.email-suggest-scroll {
+  height: 360rpx;
 }
-.email-domains-row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  gap: 12rpx;
-  padding: 4rpx 4rpx 8rpx 0;
+.email-suggest-item {
+  padding: 22rpx 24rpx;
+  border-top: 1rpx solid #f0f0ee;
 }
-.email-domain-chip {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6rpx;
-  padding: 14rpx 22rpx;
-  border-radius: 9999rpx;
-  background: #fafaf9;
-  border: 1rpx solid #e7e5e4;
-}
-.email-domain-chip:active {
-  opacity: 0.85;
+.email-suggest-item:active {
   background: #fff7ed;
-  border-color: rgba(155, 63, 0, 0.35);
 }
-.email-domain-name {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #9b3f00;
-}
-.email-domain-at {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #57534e;
+.email-suggest-item-t {
+  font-size: 28rpx;
+  color: #1c1917;
+  font-weight: 500;
 }
 </style>
