@@ -429,7 +429,7 @@ async function doRegister() {
     if (res.access_token) setAuthToken(res.access_token)
     uni.showModal({
       title: '邀请码（发给伙伴）',
-      content: res.join_code || '请在「报表」页退出重新登录查看账号信息',
+      content: res.join_code || '可稍后在「吃啥」或「报表」页查看邀请码',
       showCancel: false,
       success: () => uni.switchTab({ url: '/pages/pick/pick' }),
     })

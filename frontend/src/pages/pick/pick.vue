@@ -6,6 +6,11 @@
         <text class="hero-title">food-picker</text>
       </view>
       <text class="hero-subtitle">附近有什么好店 · 随手挑几家进精选 · 再抽签</text>
+      <view v-if="spaceJoinCode" class="invite-strip" @click="copyJoinCode">
+        <text class="invite-strip-label">邀请码</text>
+        <text class="invite-strip-code">{{ spaceJoinCode }}</text>
+        <text class="invite-strip-action">复制</text>
+      </view>
     </view>
 
     <view class="loc-bar" v-if="hasUserCoords && selectedDistance">
@@ -205,7 +210,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { restaurantApi, amapApi, checkAuthGate } from '../../api'
+import { restaurantApi, amapApi, authApi, checkAuthGate } from '../../api'
 import { wgs84ToGcj02 } from '../../utils/geo-china'
 
 /** 与后端 PriceTierEnum 一致：0-10 / 10-20 / 20-50 / 50-100 / 100+ */
@@ -242,6 +247,7 @@ const userLat = ref(null)
 const userLng = ref(null)
 const locationLabel = ref('')
 const manualAddress = ref('')
+const spaceJoinCode = ref('')
 
 /** 成都信息工程大学航空港校区参考点（GCJ-02） */
 const FALLBACK_LAT = 30.5865
@@ -604,8 +610,28 @@ const goEat = (restaurant) => {
   })
 }
 
+const fetchJoinCode = async () => {
+  spaceJoinCode.value = ''
+  if (!uni.getStorageSync('auth_token')) return
+  try {
+    const res = await authApi.me()
+    if (res.auth_required && res.join_code) spaceJoinCode.value = res.join_code
+  } catch {
+    spaceJoinCode.value = ''
+  }
+}
+
+const copyJoinCode = () => {
+  if (!spaceJoinCode.value) return
+  uni.setClipboardData({
+    data: spaceJoinCode.value,
+    success: () => uni.showToast({ title: '邀请码已复制', icon: 'none' }),
+  })
+}
+
 onShow(async () => {
   if (!(await checkAuthGate())) return
+  void fetchJoinCode()
   if (!locationBootstrapped.value) {
     locationBootstrapped.value = true
     if (userLat.value == null || userLng.value == null || userLat.value === '' || userLng.value === '') {
@@ -660,6 +686,38 @@ watch([selectedTier, selectedDistance, category], async (_n, oldVals) => {
 .hero-subtitle {
   display: block; font-size: 30rpx; font-weight: 500; color: #a8a29e;
   margin-top: 4rpx; letter-spacing: 1rpx;
+}
+.invite-strip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 20rpx;
+  padding: 18rpx 22rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  border: 1rpx solid #e7e5e4;
+  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.04);
+}
+.invite-strip-label {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #78716c;
+  flex-shrink: 0;
+}
+.invite-strip-code {
+  flex: 1;
+  min-width: 0;
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #9b3f00;
+  letter-spacing: 1rpx;
+}
+.invite-strip-action {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #ff7a2c;
+  flex-shrink: 0;
 }
 .loc-bar {
   display: flex;

@@ -13,6 +13,20 @@
       </view>
     </view>
 
+    <view v-if="spaceInvite && spaceInvite.join_code" class="invite-card">
+      <text class="invite-card-title">邀请伙伴加入空间</text>
+      <text class="invite-card-sub">把邀请码发给对方，在「登录 → 加入空间」里填写</text>
+      <view class="invite-code-row">
+        <text class="invite-code-value" selectable>{{ spaceInvite.join_code }}</text>
+        <view class="invite-copy-btn" @click="copyJoinCode">
+          <text class="invite-copy-btn-t">复制</text>
+        </view>
+      </view>
+      <text v-if="spaceInvite.max_members != null" class="invite-meta">
+        当前 {{ spaceInvite.member_count || 0 }} / {{ spaceInvite.max_members }} 人
+      </text>
+    </view>
+
     <view v-if="stats" class="bento-grid">
       <!-- Favorite Spot — Wide Card (Figma gradient bg + stats) -->
       <view class="bento-wide" v-if="topRestaurant">
@@ -133,10 +147,11 @@
 import { ref, computed } from 'vue'
 import { watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { recordApi, clearAuthToken, checkAuthGate } from '../../api'
+import { recordApi, authApi, clearAuthToken, checkAuthGate } from '../../api'
 
 const stats = ref(null)
 const hasToken = ref(false)
+const spaceInvite = ref(null)
 const maxCount = ref(1)
 const maxVisits = ref(1)
 const period = ref('all')
@@ -175,9 +190,36 @@ const logout = () => {
   uni.reLaunch({ url: '/pages/login/login' })
 }
 
+const fetchSpaceInvite = async () => {
+  spaceInvite.value = null
+  if (!uni.getStorageSync('auth_token')) return
+  try {
+    const res = await authApi.me()
+    if (res.auth_required && res.join_code) {
+      spaceInvite.value = {
+        join_code: res.join_code,
+        member_count: res.member_count,
+        max_members: res.max_members,
+      }
+    }
+  } catch {
+    spaceInvite.value = null
+  }
+}
+
+const copyJoinCode = () => {
+  const code = spaceInvite.value && spaceInvite.value.join_code
+  if (!code) return
+  uni.setClipboardData({
+    data: code,
+    success: () => uni.showToast({ title: '邀请码已复制', icon: 'none' }),
+  })
+}
+
 onShow(async () => {
   if (!(await checkAuthGate())) return
   hasToken.value = !!uni.getStorageSync('auth_token')
+  await fetchSpaceInvite()
   fetchStats()
 })
 watch(period, () => fetchStats())
@@ -222,6 +264,61 @@ watch(period, () => fetchStats())
 .toggle-active { background: #ffffff; box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.08); }
 .toggle-text { font-size: 24rpx; font-weight: 600; color: #78716c; }
 .toggle-text-active { color: #1c1917; }
+
+/* ---- 邀请码 ---- */
+.invite-card {
+  background: #ffffff;
+  border-radius: 40rpx;
+  padding: 28rpx 28rpx 24rpx;
+  margin-bottom: 24rpx;
+  border: 1rpx solid #e7e5e4;
+  box-shadow: 0 8rpx 24rpx rgba(124, 45, 18, 0.06);
+}
+.invite-card-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 800;
+  color: #1c1917;
+}
+.invite-card-sub {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #a8a29e;
+  line-height: 1.45;
+}
+.invite-code-row {
+  margin-top: 20rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+}
+.invite-code-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #9b3f00;
+  letter-spacing: 2rpx;
+}
+.invite-copy-btn {
+  flex-shrink: 0;
+  padding: 16rpx 32rpx;
+  border-radius: 9999rpx;
+  background: linear-gradient(90deg, #9b3f00, #ff7a2c);
+}
+.invite-copy-btn-t {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
+.invite-meta {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  color: #78716c;
+}
 
 /* ---- Bento Grid ---- */
 .bento-grid { display: flex; flex-direction: column; gap: 20rpx; }
